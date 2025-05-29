@@ -7,7 +7,7 @@ module.exports = {
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",
     splash: {
-      image: "./assets/splash.png",
+      // image: "./assets/splash.png",
       resizeMode: "contain",
       backgroundColor: "#ffffff"
     },
@@ -21,7 +21,8 @@ module.exports = {
       adaptiveIcon: {
         foregroundImage: "./assets/adaptive-icon.png",
         backgroundColor: "#ffffff"
-      }
+      },
+      package: "com.anonymous.reflectai"
     },
     web: {
       favicon: "./assets/favicon.png"
