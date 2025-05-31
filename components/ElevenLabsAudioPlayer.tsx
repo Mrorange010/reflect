@@ -15,12 +15,9 @@ const ElevenLabsAudioPlayer: React.FC<ElevenLabsAudioPlayerProps> = ({ publicUse
 
   return (
     <WebView
-      originWhitelist={['*']} // Consider restricting this to ['https://elevenlabs.io'] for better security
+      originWhitelist={['*']}
       source={{ html: htmlContent }}
-      style={{ flex: 1, width: '100%', height: 300 }} // Added height for visibility
-      javaScriptEnabled={true}
-      domStorageEnabled={true}
-      mediaPlaybackRequiresUserAction={false} // If you want audio to potentially autoplay
+      style={{ flex: 1 }}
     />
   );
 };

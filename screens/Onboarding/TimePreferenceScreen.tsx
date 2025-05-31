@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '../../utils/supabase';
 import { NavigationProp } from '../../navigation';
 
 interface Time {
@@ -11,9 +12,9 @@ interface Time {
 }
 
 const TIMES = [
-  { id: 'Morning', emoji: '🌅', description: 'Start your day with intention' },
-  { id: 'Afternoon', emoji: '☀️', description: 'Midday pause and reflection' },
-  { id: 'Evening', emoji: '🌙', description: 'Unwind and process your day' },
+  { id: 'Morning', emoji: '🌅', description: 'Ava will call between 9am and 11am' },
+  { id: 'Afternoon', emoji: '☀️', description: 'Ava will call between 1pm and 3pm' },
+  { id: 'Evening', emoji: '🌙', description: 'Ava will call between 7pm and 9pm' },
 ];
 
 export default function TimePreferenceScreen() {
@@ -21,6 +22,32 @@ export default function TimePreferenceScreen() {
   const route = useRoute<any>();
   const { goals } = route.params || {};
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const handleFinish = async () => {
+    if (!selectedTime) {
+      Alert.alert('Please select a time preference.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) throw new Error('No user logged in');
+      const { error } = await supabase.from('user_settings').upsert({
+        user_id: user.id,
+        goals: goals ? JSON.stringify(goals) : null,
+        call_time: selectedTime,
+        onboarding_complete: true,
+      });
+      if (error) throw error;
+      // Navigate to main app/home screen
+      navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
+    } catch (e) {
+      Alert.alert('Error', 'Failed to save your time preference.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const renderTimeCard = (time: Time, isFullWidth = false) => (
     <TouchableOpacity
@@ -134,37 +161,36 @@ export default function TimePreferenceScreen() {
             {renderTimeCard(TIMES[0])}
             {renderTimeCard(TIMES[1])}
           </View>
-          
           {/* Bottom Row: Evening (Full Width) */}
           <View>
             {renderTimeCard(TIMES[2], true)}
           </View>
         </View>
 
-        {/* Next Button */}
+        {/* Start Reflecting Button */}
         <TouchableOpacity
           style={{
-            backgroundColor: !selectedTime ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.9)',
+            backgroundColor: !selectedTime || saving ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.9)',
             paddingVertical: 16,
             borderRadius: 16,
-            shadowColor: !selectedTime ? 'transparent' : '#000',
+            shadowColor: !selectedTime || saving ? 'transparent' : '#000',
             shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: !selectedTime ? 0 : 0.2,
+            shadowOpacity: !selectedTime || saving ? 0 : 0.2,
             shadowRadius: 8,
-            elevation: !selectedTime ? 0 : 6,
+            elevation: !selectedTime || saving ? 0 : 6,
             marginBottom: 12,
           }}
-          onPress={() => navigation.navigate('MethodPreference', { goals, time: selectedTime! })}
-          disabled={!selectedTime}
+          onPress={handleFinish}
+          disabled={!selectedTime || saving}
           activeOpacity={0.8}
         >
           <Text style={{
-            color: !selectedTime ? 'rgba(255, 255, 255, 0.6)' : '#667eea',
+            color: !selectedTime || saving ? 'rgba(255, 255, 255, 0.6)' : '#667eea',
             textAlign: 'center',
             fontSize: 18,
             fontWeight: '600',
           }}>
-            {selectedTime ? `Continue with ${selectedTime}` : 'Select a time to continue'}
+            {saving ? 'Setting up your experience...' : 'Start Reflecting'}
           </Text>
         </TouchableOpacity>
 

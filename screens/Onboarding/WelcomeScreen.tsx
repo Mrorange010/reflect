@@ -1,11 +1,38 @@
-import { View, Text, TouchableOpacity } from 'react-native';
+import { useState } from 'react';
+import { View, Text, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { supabase } from '../../utils/supabase';
 import { NavigationProp } from '../../navigation';
 
 export default function WelcomeScreen() {
   const navigation = useNavigation<NavigationProp>();
-  
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleNext = async () => {
+    if (!name.trim()) {
+      Alert.alert('Please enter your first name.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) throw new Error('No user logged in');
+      // Save to users table
+      await supabase.from('users').upsert({
+        id: user.id,
+        name: name.trim(),
+        email: user.email, // optional, for upsert
+      });
+      navigation.navigate('Goals');
+    } catch (e) {
+      Alert.alert('Error', 'Failed to save your name.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <LinearGradient
       colors={['#667eea', '#764ba2']}
@@ -14,79 +41,54 @@ export default function WelcomeScreen() {
       end={{ x: 1, y: 1 }}
     >
       <View style={{ flex: 1, paddingHorizontal: 24, justifyContent: 'center' }}>
-        {/* Header */}
+        {/* Ava Introduction and Name Prompt */}
         <View style={{ alignItems: 'center', marginBottom: 48 }}>
-          <View style={{
-            width: 100,
-            height: 100,
-            backgroundColor: 'rgba(255, 255, 255, 0.2)',
-            borderRadius: 50,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 32,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-            elevation: 8,
-          }}>
-            <Text style={{ fontSize: 40, color: 'white' }}>✨</Text>
-          </View>
           <Text style={{
-            fontSize: 36,
+            fontSize: 28,
             fontWeight: 'bold',
             color: 'white',
-            marginBottom: 12,
+            marginBottom: 18,
             textAlign: 'center',
           }}>
-            Welcome to ReflectAI
+            Hi! I'm Ava 👋
           </Text>
           <Text style={{
             fontSize: 18,
-            color: 'rgba(255, 255, 255, 0.8)',
+            color: 'rgba(255, 255, 255, 0.9)',
             textAlign: 'center',
             lineHeight: 26,
-            paddingHorizontal: 16,
+            paddingHorizontal: 8,
+            marginBottom: 24,
           }}>
-            Your daily AI-powered reflection companion.{'\n'}Let's set up your experience!
+            I'm here to help you reflect on life's journey. Before we get started, what shall I call you?
           </Text>
-        </View>
-
-        {/* Content Card */}
-        <View style={{
-          backgroundColor: 'white',
-          borderRadius: 24,
-          padding: 32,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.15,
-          shadowRadius: 16,
-          elevation: 12,
-          marginBottom: 32,
-          alignItems: 'center',
-        }}>
-          <Text style={{
-            fontSize: 20,
-            fontWeight: '600',
-            color: '#1F2937',
-            marginBottom: 16,
-            textAlign: 'center',
-          }}>
-            Ready to Begin?
-          </Text>
-          <Text style={{
-            fontSize: 16,
-            color: '#6B7280',
-            textAlign: 'center',
-            lineHeight: 24,
-            marginBottom: 32,
-          }}>
-            We'll guide you through a quick setup to personalize your reflection journey
-          </Text>
-
+          <TextInput
+            placeholder="first name"
+            placeholderTextColor="#bdbdbd"
+            value={name}
+            onChangeText={setName}
+            style={{
+              backgroundColor: 'white',
+              borderRadius: 14,
+              padding: 16,
+              fontSize: 18,
+              width: '100%',
+              marginBottom: 24,
+              color: '#222',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.08,
+              shadowRadius: 4,
+              elevation: 2,
+            }}
+            autoCapitalize="words"
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={handleNext}
+          />
           <TouchableOpacity
             style={{
-              backgroundColor: '#667eea',
+              backgroundColor: saving ? '#ccc' : '#667eea',
               paddingVertical: 16,
               paddingHorizontal: 48,
               borderRadius: 16,
@@ -97,7 +99,8 @@ export default function WelcomeScreen() {
               elevation: 6,
               width: '100%',
             }}
-            onPress={() => navigation.navigate('Goals')}
+            onPress={handleNext}
+            disabled={saving}
             activeOpacity={0.8}
           >
             <Text style={{
@@ -106,7 +109,7 @@ export default function WelcomeScreen() {
               fontSize: 18,
               fontWeight: '600',
             }}>
-              Start Your Journey
+              {saving ? 'Saving...' : 'Continue'}
             </Text>
           </TouchableOpacity>
         </View>

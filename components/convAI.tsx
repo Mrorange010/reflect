@@ -1,112 +1,169 @@
-'use dom';
+"use dom";
 
-import React from 'react';
-import { useConversation } from '@elevenlabs/react';
-import { Mic } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
-import { View, Pressable, StyleSheet, Text } from 'react-native';
+import React, { useCallback, useEffect, useRef } from "react";
+import { DOMImperativeFactory, useDOMImperativeHandle } from "expo/dom";
+import { useConversation } from "@11labs/react";
+// If you have a Message type, import it; otherwise, use 'any'
+// import type { Message } from "../components/ChatMessage";
 
-type AgentType = 'weekStart' | 'weekEnd';
+type Message = any;
 
-async function requestMicrophonePermission() {
-  try {
-    await navigator.mediaDevices.getUserMedia({ audio: true });
-    return true;
-  } catch (error) {
-    console.error('Microphone permission denied:', error);
-    return false;
-  }
+export interface ConvAiRef extends DOMImperativeFactory {
+  startConversation: () => void;
+  stopConversation: () => void;
 }
 
-export default function ConvAiDOMComponent({
-  platform,
-  agentType,
-}: {
+interface ConvAiDOMComponentProps {
   platform: string;
-  agentType: AgentType;
-}) {
-  const [isRecording, setIsRecording] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const conversation = useConversation({
-    onConnect: () => setIsRecording(true),
-    onDisconnect: () => setIsRecording(false),
-    onMessage: (message) => {
-      console.log('Message received:', message);
-    },
-    onError: (error) => {
-      setError('Connection error. Please try again.');
-      setIsRecording(false);
-    },
-  });
-
-  const getAgentConfig = (type: AgentType) => ({
-    weekStart: {
-      agentId: process.env.ELEVENLABS_WEEK_START_AGENT_ID,
-      greeting: "Good morning! How was your weekend? Let's plan for the week ahead.",
-    },
-    weekEnd: {
-      agentId: process.env.ELEVENLABS_WEEK_END_AGENT_ID,
-      greeting: "It's Friday! How was your week? Let's reflect on your achievements.",
-    },
-  }[type]);
-
-  const startConversation = useCallback(async () => {
-    setError(null);
-    const hasPermission = await requestMicrophonePermission();
-    if (!hasPermission) {
-      setError('Microphone permission is required for voice reflections');
-      return;
-    }
-    const config = getAgentConfig(agentType);
-    if (!config.agentId) {
-      setError('Agent ID is not set. Please check your environment variables.');
-      return;
-    }
-    try {
-      await conversation.startSession({
-        agentId: config.agentId,
-        dynamicVariables: {
-          platform,
-          greeting: config.greeting,
-        },
-      });
-    } catch (error) {
-      setError('Failed to start conversation. Please try again.');
-    }
-  }, [conversation, platform, agentType]);
-
-  return (
-    <View style={styles.container}>
-      {error && <Text style={styles.errorText}>{error}</Text>}
-      <Pressable
-        onPress={startConversation}
-        style={({ pressed }) => [
-          styles.button,
-          pressed && styles.buttonPressed,
-          isRecording && styles.buttonRecording,
-        ]}
-      >
-        <Mic size={24} color="#fff" />
-      </Pressable>
-      {isRecording && (
-        <Text style={styles.recordingText}>
-          {agentType === 'weekStart' ? 'Planning your week...' : 'Reflecting on your week...'}
-        </Text>
-      )}
-    </View>
-  );
+  onMessage: (message: Message) => void;
+  setMessage: (msg: string) => void;
+  setStatus: any;
+  dom?: import("expo/dom").DOMProps;
+  setIsConversationStarting: any;
+  setMode: any;
+  setError: React.Dispatch<React.SetStateAction<string>>;
+  setActiveAnimation: React.Dispatch<
+    React.SetStateAction<"idle" | "speaking" | "listening">
+  >;
+  setAudioLevel: React.Dispatch<React.SetStateAction<number[]>>;
+  activeAnimation: "idle" | "speaking" | "listening";
+  setIsSpeaking: React.Dispatch<React.SetStateAction<boolean>>;
+  setCurrentSpokenWordIndex: any;
+  setWords: any;
+  currentMessageRef: any;
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  button: {
-    width: 60, height: 60, borderRadius: 30, backgroundColor: '#007AFF',
-    justifyContent: 'center', alignItems: 'center', shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5,
-  },
-  buttonPressed: { backgroundColor: '#0056b3', transform: [{ scale: 0.95 }] },
-  buttonRecording: { backgroundColor: '#FF3B30' },
-  recordingText: { marginTop: 12, color: '#666', fontSize: 14 },
-  errorText: { color: '#FF3B30', marginBottom: 12, textAlign: 'center' },
-});
+const ConvAiDOMComponent = React.forwardRef<ConvAiRef, ConvAiDOMComponentProps>(
+  (
+    {
+      platform,
+      onMessage,
+      setMessage,
+      setStatus,
+      setIsConversationStarting,
+      setMode,
+      setError,
+      setActiveAnimation,
+      setAudioLevel,
+      activeAnimation,
+      setIsSpeaking,
+      setCurrentSpokenWordIndex,
+      setWords,
+      currentMessageRef
+    },
+    ref
+  ) => {
+    const isActive = useRef(false);
+
+    const conversation = useConversation({
+      onConnect: () => {
+        console.log("[ConvAI] ✅ Connected to ElevenLabs");
+        setStatus("connected");
+        isActive.current = true;
+      },
+      onDisconnect: () => {
+        console.log("[ConvAI] ❌ Disconnected from ElevenLabs");
+        setStatus("disconnected");
+        isActive.current = false;
+        setActiveAnimation("idle");
+      },
+      onMessage: (message: any) => {
+        if (!isActive.current) {
+          console.log(
+            "[ConvAI] ⚠️ Ignored message (conversation inactive):",
+            message.message
+          );
+          return;
+        }
+        // console.log("[ConvAI] 📨 Message:", message.message, "Source:", message.source);
+        setMessage(message.message); // Parent might not use this if only audio
+        setMode(message.source);
+        onMessage?.(message); // For any parent-specific handling
+        if (message.source == "user") {
+          setActiveAnimation("listening");
+        } else {
+          const newWords = message.message;
+          setWords(newWords);
+          currentMessageRef.current = message.message;
+          setCurrentSpokenWordIndex(0);
+          setActiveAnimation("speaking");
+        }
+      },
+      onStart: () => {
+        console.log("[ConvAI] 🎙️ Conversation started (SDK event)");
+        setStatus("started");
+        setActiveAnimation("listening");
+      },
+      onStop: () => {
+        console.log("[ConvAI] 🛑 Conversation stopped (SDK event)");
+        setStatus("stopped");
+        isActive.current = false;
+        setActiveAnimation("idle");
+      },
+      onError: (error: any) => {
+        console.error("[ConvAI] ⚠️ SDK onError:", JSON.stringify(error, null, 2));
+        setStatus("error");
+        isActive.current = false;
+        setActiveAnimation("idle");
+        setError(error?.message || "A connection error occurred with the voice service.");
+      },
+    });
+
+    const startConversation = useCallback(async () => {
+      console.log("[ConvAI] Attempting to start conversation...");
+      setIsConversationStarting(true);
+      try {
+        console.log("[ConvAI] Requesting microphone access via getUserMedia...");
+        // navigator.mediaDevices.getUserMedia will throw if permission is denied
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log("[ConvAI] ✅ Microphone access granted via getUserMedia.");
+
+        console.log("[ConvAI] Starting ElevenLabs session...");
+        await conversation.startSession({
+          agentId: "agent_01jwdxxnscf15r0tr36jwjh363", // Replace with your real agent ID
+        });
+        console.log("[ConvAI] ✅ ElevenLabs session started.");
+        // onStart callback from useConversation should handle setStatus and setActiveAnimation
+      } catch (err: any) {
+        console.error("[ConvAI] ❌ Error during startConversation:", JSON.stringify(err, null, 2));
+        let errorMessage = "Failed to start the conversation.";
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          errorMessage = "Microphone permission was denied. Please enable it in your browser/app settings.";
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          errorMessage = "No microphone was found on your device.";
+        } else if (err.message && typeof err.message === 'string') {
+          errorMessage = err.message; // Use error message from SDK if available
+        }
+        setError(errorMessage);
+        setActiveAnimation("idle");
+      } finally {
+        setIsConversationStarting(false);
+      }
+    }, [conversation, setIsConversationStarting, setError, setActiveAnimation]); // Added setActiveAnimation
+
+    const stopConversation = useCallback(async () => {
+      console.log("[ConvAI] Attempting to stop conversation...");
+      setActiveAnimation("idle");
+      setAudioLevel(Array(15).fill(0)); // Reset audio level visualization
+      if (conversation.status !== "disconnected" && conversation.status !== "disconnecting") {
+        await conversation.endSession();
+        console.log("[ConvAI] ✅ ElevenLabs session ended.");
+      } else {
+        console.log("[ConvAI] Session already disconnected or disconnecting.");
+      }
+    }, [conversation, setActiveAnimation, setAudioLevel]); // Added dependencies
+
+    useDOMImperativeHandle(
+      ref,
+      () => ({
+        startConversation,
+        stopConversation,
+      }),
+      [startConversation, stopConversation]
+    );
+
+    return null; // This component does not render any UI itself
+  }
+);
+
+export default ConvAiDOMComponent;

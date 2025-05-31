@@ -55,10 +55,18 @@ export default function SignUpScreen() {
 
     try {
       setLoading(true);
-      const { error } = await supabase.auth.signUp({
+      const { data: { user }, error } = await supabase.auth.signUp({
         email,
         password,
       });
+
+      if (user) {
+        await supabase
+          .from('users')
+          .insert([
+            { id: user.id, email }
+          ]);
+      }
 
       if (error) throw error;
 
