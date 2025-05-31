@@ -15,7 +15,8 @@ module.exports = {
       "**/*"
     ],
     ios: {
-      supportsTablet: true
+      supportsTablet: true,
+      bundleIdentifier: "com.anonymous.reflectai"
     },
     android: {
       adaptiveIcon: {

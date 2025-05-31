@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NavigationProp } from '../navigation';
 import ConvAiDOMComponent from '../components/convAI';
+import ElevenLabsAudioPlayer from '../components/ElevenLabsAudioPlayer';
 
 const { width, height } = Dimensions.get('window');
 
@@ -247,10 +248,7 @@ export default function CallScreen() {
         {/* Render the ElevenLabs AI agent when showAI is true */}
         {showAI && (
           <View style={{ position: 'absolute', top: 100, left: 0, right: 0, alignItems: 'center', zIndex: 10 }}>
-            <ConvAiDOMComponent
-              platform={Platform.OS}
-              agentType="weekStart"
-            />
+            <ElevenLabsAudioPlayer publicUserId="YOUR_PUBLIC_USER_ID" />
           </View>
         )}
       </LinearGradient>
