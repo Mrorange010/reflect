@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef } from "react";
 import { DOMImperativeFactory, useDOMImperativeHandle } from "expo/dom";
 import { useConversation } from "@11labs/react";
+import { Platform } from 'react-native';
 // If you have a Message type, import it; otherwise, use 'any'
 // import type { Message } from "../components/ChatMessage";
 
@@ -31,6 +32,7 @@ interface ConvAiDOMComponentProps {
   setCurrentSpokenWordIndex: any;
   setWords: any;
   currentMessageRef: any;
+  userId: string | null;
 }
 
 const ConvAiDOMComponent = React.forwardRef<ConvAiRef, ConvAiDOMComponentProps>(
@@ -49,7 +51,8 @@ const ConvAiDOMComponent = React.forwardRef<ConvAiRef, ConvAiDOMComponentProps>(
       setIsSpeaking,
       setCurrentSpokenWordIndex,
       setWords,
-      currentMessageRef
+      currentMessageRef,
+      userId,
     },
     ref
   ) => {
@@ -110,20 +113,33 @@ const ConvAiDOMComponent = React.forwardRef<ConvAiRef, ConvAiDOMComponentProps>(
     });
 
     const startConversation = useCallback(async () => {
-      console.log("[ConvAI] Attempting to start conversation...");
+      console.log("[ConvAI] startConversation called");
       setIsConversationStarting(true);
       try {
-        console.log("[ConvAI] Requesting microphone access via getUserMedia...");
-        // navigator.mediaDevices.getUserMedia will throw if permission is denied
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        console.log("[ConvAI] ✅ Microphone access granted via getUserMedia.");
+        if (Platform.OS === 'web') {
+          console.log("[ConvAI] Requesting microphone access via getUserMedia...");
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+          console.log("[ConvAI] ✅ Microphone access granted via getUserMedia.");
+        } else {
+          // On native, permissions are already handled in CallScreen
+          console.log("[ConvAI] Skipping getUserMedia on native platform.");
+        }
 
         console.log("[ConvAI] Starting ElevenLabs session...");
+        if (!userId) {
+          console.error("[ConvAI] ❌ Cannot start session: userId is missing.");
+          setError("User ID is missing, cannot start the call.");
+          setIsConversationStarting(false);
+          setActiveAnimation("idle");
+          return;
+        }
         await conversation.startSession({
-          agentId: "agent_01jwdxxnscf15r0tr36jwjh363", // Replace with your real agent ID
+          agentId: "agent_01jwdxxnscf15r0tr36jwjh363",
+          dynamicVariables: {
+            user_id: userId 
+          }
         });
-        console.log("[ConvAI] ✅ ElevenLabs session started.");
-        // onStart callback from useConversation should handle setStatus and setActiveAnimation
+        console.log("[ConvAI] ✅ ElevenLabs session started with userId:", userId);
       } catch (err: any) {
         console.error("[ConvAI] ❌ Error during startConversation:", JSON.stringify(err, null, 2));
         let errorMessage = "Failed to start the conversation.";
@@ -139,7 +155,7 @@ const ConvAiDOMComponent = React.forwardRef<ConvAiRef, ConvAiDOMComponentProps>(
       } finally {
         setIsConversationStarting(false);
       }
-    }, [conversation, setIsConversationStarting, setError, setActiveAnimation]); // Added setActiveAnimation
+    }, [conversation, setIsConversationStarting, setError, setActiveAnimation, userId]);
 
     const stopConversation = useCallback(async () => {
       console.log("[ConvAI] Attempting to stop conversation...");

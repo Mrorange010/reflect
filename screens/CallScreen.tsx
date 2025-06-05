@@ -19,6 +19,8 @@ import { useNavigation } from '@react-navigation/native';
 import { NavigationProp } from '../navigation';
 import { Audio } from 'expo-av';
 import ConvAiDOMComponent from '../components/convAI';
+import { supabase } from '../utils/supabase';
+import { updateUserStreak } from '../utils/streak';
 
 type ConvAiRef = any;
 
@@ -39,6 +41,7 @@ export default function CallScreen() {
   const [currentSpokenWordIndex, setCurrentSpokenWordIndex] = useState<number>(0);
   const [words, setWords] = useState<string[]>([]);
   const currentMessageRef = useRef<string>('');
+  const [userId, setUserId] = useState<string | null>(null);
 
   // New realistic call features
   const [callDuration, setCallDuration] = useState(0);
@@ -48,6 +51,32 @@ export default function CallScreen() {
   let renderCount = useRef(0);
   renderCount.current += 1;
   console.log('[CallScreen] Render count:', renderCount.current);
+
+  // Fetch User ID
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError) {
+          console.error('[CallScreen] Error fetching user:', userError.message);
+          setError('Could not identify user for the call.');
+          return;
+        }
+        if (user) {
+          console.log('[CallScreen] User ID fetched:', user.id);
+          setUserId(user.id);
+        } else {
+          console.warn('[CallScreen] No user logged in.');
+          setError('No user session found. Please log in.');
+          // Optionally navigate to login or show an alert
+        }
+      } catch (e: any) {
+        console.error('[CallScreen] Exception fetching user:', e.message);
+        setError('An unexpected error occurred while identifying you.');
+      }
+    };
+    fetchUser();
+  }, []);
 
   // Call timer effect
   useEffect(() => {
@@ -131,6 +160,14 @@ export default function CallScreen() {
 
   const handleAcceptCall = async () => {
     console.log('[CallScreen] handleAcceptCall started');
+    console.log('[CallScreen] Current userId state at start of handleAcceptCall:', userId);
+
+    if (!userId) {
+      console.error('[CallScreen] BLOCKING CALL: User ID is not available in handleAcceptCall.');
+      Alert.alert('Error', 'Your user session could not be identified. Please try logging out and back in.');
+      return;
+    }
+
     let perm = await Audio.getPermissionsAsync();
     console.log('[CallScreen] Initial permission status:', JSON.stringify(perm));
 
@@ -164,7 +201,7 @@ export default function CallScreen() {
       console.log('[CallScreen] Configuring simplified audio session...');
       await configureAudioSession();
       
-      console.log('[CallScreen] Attempting to call convRef.current.startConversation()...');
+      console.log('[CallScreen] About to call startConversation. Current userId:', userId);
       if (convRef.current) {
         convRef.current.startConversation();
         console.log('[CallScreen] convRef.current.startConversation() called.');
@@ -355,6 +392,7 @@ export default function CallScreen() {
           setCurrentSpokenWordIndex={setCurrentSpokenWordIndex}
           setWords={setWords}
           currentMessageRef={currentMessageRef}
+          userId={userId}
         />
       </LinearGradient>
     </SafeAreaView>

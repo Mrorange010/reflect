@@ -13,6 +13,7 @@ import GoalsScreen from '../screens/Onboarding/GoalsScreen';
 import TimePreferenceScreen from '../screens/Onboarding/TimePreferenceScreen';
 import MethodPreferenceScreen from '../screens/Onboarding/MethodPreferenceScreen';
 import CallScreen from '../screens/CallScreen';
+import ReflectionDetailScreen from '../screens/ReflectionDetailScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -23,11 +24,39 @@ export type RootStackParamList = {
   TimePreference: { goals: string[] };
   MethodPreference: { goals: string[]; time: string };
   Call: undefined;
+  ReflectionDetail: { reflection: any };
 };
 
 export type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+function hexToBytes(hex: string) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return bytes;
+}
+
+async function verifyHMAC(body: string, signature: string, secret: string) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+  const sigBytes = hexToBytes(signature);
+  const valid = await crypto.subtle.verify(
+    "HMAC",
+    key,
+    sigBytes,
+    encoder.encode(body)
+  );
+  return valid;
+}
 
 function AppNavigator() {
   const [loading, setLoading] = useState(true);
@@ -97,6 +126,7 @@ function AppNavigator() {
         <>
           <Stack.Screen name="Home" component={HomeScreen} />
           <Stack.Screen name="Call" component={CallScreen} />
+          <Stack.Screen name="ReflectionDetail" component={ReflectionDetailScreen} />
         </>
       )}
     </Stack.Navigator>

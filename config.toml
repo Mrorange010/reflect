@@ -1,0 +1,10 @@
+[project]
+ref = "your-project-ref"
+
+[functions.capturereflections]
+verify_jwt = false
+
+[functions]
+# If you have other functions that need anonymous access
+# [functions.other-function-name]
+# verify_jwt = false

@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NavigationProp } from '../navigation';
+import { supabase } from '../utils/supabase';
 
 export default function SettingsScreen() {
   const navigation = useNavigation<NavigationProp>();
@@ -48,6 +49,35 @@ export default function SettingsScreen() {
           onPress: () => {
             // TODO: Implement account deletion
             navigation.navigate('Login');
+          }
+        }
+      ]
+    );
+  };
+
+  const handleLogout = async () => {
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to log out?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Logout",
+          style: "destructive",
+          onPress: async () => {
+            const { error } = await supabase.auth.signOut();
+            if (error) {
+              Alert.alert("Logout Failed", error.message);
+            } else {
+              // Reset navigation to Login screen
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Login' }],
+              });
+            }
           }
         }
       ]
@@ -172,7 +202,13 @@ export default function SettingsScreen() {
               value="Manage your data privacy"
             />
             <SettingItem
-              icon="log-out"
+              icon="exit-outline"
+              title="Logout"
+              onPress={handleLogout}
+              showChevron={false}
+            />
+            <SettingItem
+              icon="trash-outline"
               title="Delete Account"
               value="Permanently delete your account"
               destructive
