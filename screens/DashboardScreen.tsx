@@ -7,6 +7,8 @@ import {
   Dimensions,
   StyleSheet,
   FlatList,
+  Image,
+  StatusBar,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,19 +18,67 @@ import { supabase } from '../utils/supabase';
 import { EmotionalTagCloud } from '../components/dashboard/emotion-tags';
 import { WeeklyInsights } from '../components/dashboard/weekly-insights';
 import { RecentReflections } from '../components/dashboard/recent-reflections';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, useAnimatedProps } from 'react-native-reanimated';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  useAnimatedProps,
+} from 'react-native-reanimated';
 import { Easing } from 'react-native-reanimated';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { View as RNView } from 'react-native';
 
 const { width } = Dimensions.get('window');
+const CARD_WIDTH = 230;
 
-// Helper function to get user ID safely
+// ──────────────────────────────────────────────────────────────────────────────
+// 1. Define a central Color palette for light mode
+// ──────────────────────────────────────────────────────────────────────────────
+const Colors = {
+  background: '#F9F9F9',
+  cardBackground: '#FFFFFF',
+  border: '#E5E7EB',
+
+  primary: '#4F46E5',
+  primaryLight: '#E0E7FF',
+
+  secondary: '#10B981',
+  secondaryLight: '#D1FAE5',
+
+  accent: '#F59E0B',
+  accentLight: '#FEF3C7',
+
+  textPrimary: '#1F2937',
+  textSecondary: '#4B5563',
+  textMuted: '#64748B',
+  greetingBg: '#3F51B5',
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 2. Type for each Weekly‐Card
+// ──────────────────────────────────────────────────────────────────────────────
+type WeeklyCard = {
+  title: string;
+  content: string;
+  color: string; // solid color for background
+};
+
+type MoodEnergyCard = {
+  title: string;
+  content: string;
+  color: string;
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 3. Supabase helpers (unchanged logic, but trimmed spacing for brevity)
+// ──────────────────────────────────────────────────────────────────────────────
 const getUserId = async () => {
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   return user?.id;
 };
 
-// Fetch user profile
 const fetchUserProfile = async (userId: string) => {
   const { data: userProfile } = await supabase
     .from('users')
@@ -38,11 +88,53 @@ const fetchUserProfile = async (userId: string) => {
   return userProfile;
 };
 
-// Fetch weekly reflections
+const fetchWeeklyCards = async (userId: string) => {
+  const { data: weeklyCardsRaw } = await supabase
+    .from('weekly_cards')
+    .select('*')
+    .eq('user_id', userId)
+    .order('week_start_date', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!weeklyCardsRaw) return { cards: [], moodEnergy: null };
+
+  const cards: WeeklyCard[] = [];
+  if (weeklyCardsRaw.advice1_title && weeklyCardsRaw.advice1_content) {
+    cards.push({
+      title: weeklyCardsRaw.advice1_title,
+      content: weeklyCardsRaw.advice1_content,
+      color: '#36C5F0',
+    });
+  }
+  if (weeklyCardsRaw.advice2_title && weeklyCardsRaw.advice2_content) {
+    cards.push({
+      title: weeklyCardsRaw.advice2_title,
+      content: weeklyCardsRaw.advice2_content,
+      color: '#E01E5A',
+    });
+  }
+  if (weeklyCardsRaw.advice3_title && weeklyCardsRaw.advice3_content) {
+    cards.push({
+      title: weeklyCardsRaw.advice3_title,
+      content: weeklyCardsRaw.advice3_content,
+      color: '#ECB22E',
+    });
+  }
+  let moodEnergy: MoodEnergyCard | null = null;
+  if (weeklyCardsRaw.mood_energy_title && weeklyCardsRaw.mood_energy_content) {
+    moodEnergy = {
+      title: weeklyCardsRaw.mood_energy_title,
+      content: weeklyCardsRaw.mood_energy_content,
+      color: '#2EB67D',
+    };
+  }
+  return { cards, moodEnergy };
+};
+
 const fetchWeeklyReflections = async (userId: string) => {
   const fourWeeksAgo = new Date();
   fourWeeksAgo.setDate(new Date().getDate() - 28);
-
   const { data: weeklyReflectionsRaw } = await supabase
     .from('weekly_reflections')
     .select('*')
@@ -54,11 +146,9 @@ const fetchWeeklyReflections = async (userId: string) => {
   return weeklyReflectionsRaw || [];
 };
 
-// Fetch daily logs
 const fetchDailyLogs = async (userId: string) => {
   const fourteenDaysAgo = new Date();
   fourteenDaysAgo.setDate(new Date().getDate() - 14);
-
   const { data: dailyLogsRaw } = await supabase
     .from('daily_logs')
     .select('*')
@@ -70,11 +160,127 @@ const fetchDailyLogs = async (userId: string) => {
   return dailyLogsRaw || [];
 };
 
-export default function DashboardScreen() {
-  const [selectedInsight, setSelectedInsight] = useState(0);
-  const scrollRef = useRef<ScrollView>(null);
+// ──────────────────────────────────────────────────────────────────────────────
+// 4. Mental Status Bar (uses our new Colors)
+// ──────────────────────────────────────────────────────────────────────────────
+const MentalStatusBar: React.FC<{ score: number; delta: number }> = ({
+  score,
+  delta,
+}) => {
+  const percent = Math.max(0, Math.min(100, score));
+  const barColor = Colors.secondary; // teal for positive/energizing
+  let deltaText = '';
+  let deltaColor = Colors.textMuted;
+  if (delta > 0) {
+    deltaText = `Up ${delta}% from last week`;
+    deltaColor = Colors.secondary;
+  } else if (delta < 0) {
+    deltaText = `Down ${Math.abs(delta)}% from last week`;
+    deltaColor = Colors.accent;
+  } else {
+    deltaText = 'No change from last week';
+  }
+  return (
+    <View style={styles.mentalStatusCard}>
+      <Text style={styles.mentalStatusLabel}>Mental Status</Text>
+      <Text style={styles.mentalStatusSubtitle}>
+        Avg. energy and mood levels for this week
+      </Text>
+      <View style={styles.growthBarRow}>
+        <View style={styles.growthBarTrack}>
+          <View
+            style={[
+              styles.growthBarFill,
+              { width: `${percent}%`, backgroundColor: barColor },
+            ]}
+          />
+        </View>
+        <Text style={[styles.growthBarPercent, { color: barColor }]}>
+          {percent}%
+        </Text>
+      </View>
+      <Text style={[styles.mentalStatusDelta, { color: deltaColor }]}>
+        {deltaText}
+      </Text>
+    </View>
+  );
+};
 
-  // Dashboard state
+// ──────────────────────────────────────────────────────────────────────────────
+// 5. "Enhanced" Styles (for AI Cards, etc.) using the Color palette
+// ──────────────────────────────────────────────────────────────────────────────
+const enhancedCardStyles = StyleSheet.create({
+  cardsContainer: {
+    paddingVertical: 20,
+    paddingLeft: 24,
+    paddingRight: 0,
+  },
+  cardsScrollView: {
+    paddingRight: 24,
+    flexDirection: 'row',
+    gap: 1,
+  },
+  aiCard: {
+    width: CARD_WIDTH,
+    minHeight: 180,
+    borderRadius: 20,
+    paddingTop: 20,
+    paddingBottom: 20,
+    paddingHorizontal: 16,
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    marginHorizontal: 8,
+    marginTop: 0,
+    marginBottom: 10,
+    backgroundColor: '#36C5F0', // will be overridden by card.color
+
+    elevation: 4,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.7)',
+  },
+  aiCardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  aiCardSmallCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  aiCardHeaderText: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.85,
+    fontWeight: '500',
+  },
+  aiCardTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 8,
+    textAlign: 'left',
+    marginTop: 0,
+  },
+  aiCardContent: {
+    color: '#fff',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '500',
+    textAlign: 'left',
+  },
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// 6. Main DashboardScreen Component
+// ──────────────────────────────────────────────────────────────────────────────
+export default function DashboardScreen() {
   const [userName, setUserName] = useState('');
   const [emotionTags, setEmotionTags] = useState<string[]>([]);
   const [lastThreeWeeks, setLastThreeWeeks] = useState<
@@ -91,15 +297,22 @@ export default function DashboardScreen() {
   const [dayStreak, setDayStreak] = useState<number>(0);
   const [avgRating, setAvgRating] = useState<number>(0);
   const [entries, setEntries] = useState<number>(0);
+  const [mentalStatusScore, setMentalStatusScore] = useState<number>(0);
+  const [mentalStatusDelta, setMentalStatusDelta] = useState<number>(0);
+  const [weeklyCards, setWeeklyCards] = useState<WeeklyCard[]>([]);
+  const [moodEnergyCard, setMoodEnergyCard] = useState<MoodEnergyCard | null>(null);
+  const [latestWeeklyReflection, setLatestWeeklyReflection] = useState<any>(null);
 
-  // Get current date and greeting
+  const scrollRef = useRef<ScrollView>(null);
+  const navigation = useNavigation();
+
+  // Greeting based on local time (Europe/Rome assumed)
   const getCurrentGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good morning';
     if (hour < 17) return 'Good afternoon';
     return 'Good evening';
   };
-
   const getCurrentDate = () => {
     const today = new Date();
     return today.toLocaleDateString('en-US', {
@@ -118,18 +331,35 @@ export default function DashboardScreen() {
       const userProfile = await fetchUserProfile(userId);
       setUserName(userProfile?.name || '');
 
+      const weeklyCardsData = await fetchWeeklyCards(userId);
+      setWeeklyCards(weeklyCardsData.cards);
+      setMoodEnergyCard(weeklyCardsData.moodEnergy);
+
       const weeklyReflections = await fetchWeeklyReflections(userId);
       const dailyLogs = await fetchDailyLogs(userId);
 
-      // Process weekly reflections
+      // Process latest reflection
       const latestWeeklyReflection = weeklyReflections[0];
-      setAverageMood(latestWeeklyReflection?.mood_score ? Math.round((latestWeeklyReflection.mood_score / 10) * 100) : 0);
-      setAverageEnergy(latestWeeklyReflection?.energy_level ? Math.round((latestWeeklyReflection.energy_level / 10) * 100) : 0);
-      setReflectionQuality(latestWeeklyReflection?.reflection_quality ? Math.round((latestWeeklyReflection.reflection_quality / 10) * 100) : 0);
+      setLatestWeeklyReflection(latestWeeklyReflection);
+      setAverageMood(
+        latestWeeklyReflection?.mood_score
+          ? Math.round((latestWeeklyReflection.mood_score / 10) * 100)
+          : 0
+      );
+      setAverageEnergy(
+        latestWeeklyReflection?.energy_level
+          ? Math.round((latestWeeklyReflection.energy_level / 10) * 100)
+          : 0
+      );
+      setReflectionQuality(
+        latestWeeklyReflection?.reflection_quality
+          ? Math.round((latestWeeklyReflection.reflection_quality / 10) * 100)
+          : 0
+      );
       setOverallSentiment(latestWeeklyReflection?.sentiment || 'neutral');
 
       if (weeklyReflections.length >= 2) {
-        const weekScores = weeklyReflections.map(wr => {
+        const weekScores = weeklyReflections.map((wr) => {
           const mood = wr.mood_score || 0;
           const energy = wr.energy_level || 0;
           const quality = wr.reflection_quality || 0;
@@ -142,11 +372,14 @@ export default function DashboardScreen() {
       }
 
       setLastThreeWeeks(
-        weeklyReflections.slice(0, 3).map(wr => {
+        weeklyReflections.slice(0, 3).map((wr) => {
           const startDate = new Date(wr.week_start_date);
           const endDate = new Date(startDate);
           endDate.setDate(startDate.getDate() + 6);
-          const weekRange = `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}–${endDate.toLocaleDateString('en-US', { day: 'numeric' })}`;
+          const weekRange = `${startDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+          })}–${endDate.toLocaleDateString('en-US', { day: 'numeric' })}`;
           return {
             weekRange,
             summary: wr.summary || '',
@@ -155,56 +388,81 @@ export default function DashboardScreen() {
         })
       );
 
-      // Process daily logs for mood data
+      // Build moodData from dailyLogs
       const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
       const startOfWeek = new Date(today);
       startOfWeek.setDate(today.getDate() - today.getDay() + (today.getDay() === 0 ? -6 : 1));
-      startOfWeek.setHours(0,0,0,0);
-      
+      startOfWeek.setHours(0, 0, 0, 0);
+
       const moodDataArr = days.map((day, i) => {
         const date = new Date(startOfWeek);
         date.setDate(startOfWeek.getDate() + i);
-        const log = dailyLogs.find(l => {
+        const log = dailyLogs.find((l) => {
           const logDate = new Date(l.log_date);
-          const normalizedLogDate = new Date(logDate.getFullYear(), logDate.getMonth(), logDate.getDate());
+          const normalizedLogDate = new Date(
+            logDate.getFullYear(),
+            logDate.getMonth(),
+            logDate.getDate()
+          );
           return normalizedLogDate.toDateString() === date.toDateString();
         });
         const moodScore = log?.mood_score || 0;
-        let color = '#9CA3AF';
-        if (moodScore >= 8) color = '#10B981';
-        else if (moodScore >= 6) color = '#F59E0B';
-        else if (moodScore >= 4) color = '#EF4444';
-        else if (moodScore > 0) color = '#DC2626';
+        let color = Colors.textMuted;
+        if (moodScore >= 8) color = Colors.secondaryLight;
+        else if (moodScore >= 6) color = Colors.accentLight;
+        else if (moodScore > 0) color = '#FFE5E5'; // very pale red
         return { day, value: moodScore / 10, color };
       });
       setMoodData(moodDataArr);
 
-      // Process emotion tags
+      // Emotion tags fallback
       if (latestWeeklyReflection?.emotional_tags) {
-        setEmotionTags(latestWeeklyReflection.emotional_tags.split(/[;,]/).map((t: string) => t.trim()).filter(Boolean));
+        setEmotionTags(
+          latestWeeklyReflection.emotional_tags
+            .split(/[;,]/)
+            .map((t: string) => t.trim())
+            .filter(Boolean)
+        );
       } else if (dailyLogs.length > 0 && dailyLogs[0].emotional_tags) {
-        setEmotionTags(dailyLogs[0].emotional_tags.split(/[;,]/).map((t: string) => t.trim()).filter(Boolean));
+        setEmotionTags(
+          dailyLogs[0].emotional_tags
+            .split(/[;,]/)
+            .map((t: string) => t.trim())
+            .filter(Boolean)
+        );
       } else {
         setEmotionTags([]);
       }
 
-      // Process day streak
+      // Day Streak logic
       let streak = 0;
       let prevDate: Date | null = null;
-      const sortedDailyLogs = [...dailyLogs].sort((a,b) => new Date(b.log_date).getTime() - new Date(a.log_date).getTime());
-
+      const sortedDailyLogs = [...dailyLogs].sort(
+        (a, b) => new Date(b.log_date).getTime() - new Date(a.log_date).getTime()
+      );
       for (let i = 0; i < sortedDailyLogs.length; i++) {
         const logDate = new Date(sortedDailyLogs[i].log_date);
         if (i === 0) {
-          const todayDateOnly = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
-          const yesterdayDate = new Date();
-          yesterdayDate.setDate(new Date().getDate() -1);
-          const yesterdayDateOnly = new Date(yesterdayDate.getFullYear(), yesterdayDate.getMonth(), yesterdayDate.getDate());
+          const todayOnly = new Date(
+            new Date().getFullYear(),
+            new Date().getMonth(),
+            new Date().getDate()
+          );
+          const yesterdayOnly = new Date();
+          yesterdayOnly.setDate(new Date().getDate() - 1);
+          const yesterdayDateOnly = new Date(
+            yesterdayOnly.getFullYear(),
+            yesterdayOnly.getMonth(),
+            yesterdayOnly.getDate()
+          );
 
-          if (logDate.toDateString() === todayDateOnly.toDateString() || logDate.toDateString() === yesterdayDateOnly.toDateString()) {
+          if (
+            logDate.toDateString() === todayOnly.toDateString() ||
+            logDate.toDateString() === yesterdayDateOnly.toDateString()
+          ) {
             streak = 1;
           } else {
-            break; 
+            break;
           }
         } else {
           const diffTime = Math.abs(prevDate!.getTime() - logDate.getTime());
@@ -218,71 +476,98 @@ export default function DashboardScreen() {
         prevDate = logDate;
       }
       setDayStreak(streak);
-      
-      // Process average rating (use only logs in the last 14 days)
+
+      // Average rating over last 14 days
       const fourteenDaysAgo = new Date();
       fourteenDaysAgo.setDate(today.getDate() - 14);
-      
-      const logsForAvg = dailyLogs.filter(l => {
+      const logsForAvg = dailyLogs.filter((l) => {
         const logDate = new Date(l.log_date);
-        // Compare only date part, local timezone
         return logDate >= fourteenDaysAgo && logDate <= today;
       });
       const moodSum = logsForAvg.reduce((sum, l) => sum + (l.mood_score || 0), 0);
       setAvgRating(logsForAvg.length > 0 ? +(moodSum / logsForAvg.length).toFixed(1) : 0);
 
-      // Process entries (count of daily logs in the last 7 days from today, inclusive)
+      // Entries in last 7 days
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(today.getDate() - 7);
-      sevenDaysAgo.setHours(0,0,0,0);
-      const todayEndDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
-
-      const entriesCount = dailyLogs.filter(l => {
+      sevenDaysAgo.setHours(0, 0, 0, 0);
+      const todayEnd = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate(),
+        23,
+        59,
+        59,
+        999
+      );
+      const entriesCount = dailyLogs.filter((l) => {
         const logDate = new Date(l.log_date);
-        // Compare only date part, local timezone
-        const logDateString = logDate.toLocaleDateString();
-        const startString = sevenDaysAgo.toLocaleDateString();
-        const endString = todayEndDate.toLocaleDateString();
-        // Debug log
-        console.log('Entry check:', { logDateString, startString, endString });
-        return logDateString >= startString && logDateString <= endString;
+        const logDateStr = logDate.toLocaleDateString();
+        const startStr = sevenDaysAgo.toLocaleDateString();
+        const endStr = todayEnd.toLocaleDateString();
+        return logDateStr >= startStr && logDateStr <= endStr;
       }).length;
       setEntries(entriesCount);
+
+      // Mental Status Score & Delta
+      let msScore = 0;
+      let msDelta = 0;
+      if (weeklyReflections.length >= 1) {
+        const mood = weeklyReflections[0]?.mood_score || 0;
+        const energy = weeklyReflections[0]?.energy_level || 0;
+        msScore = Math.round(((mood + energy) / 2) * 10);
+      }
+      if (weeklyReflections.length >= 2) {
+        const prevMood = weeklyReflections[1]?.mood_score || 0;
+        const prevEnergy = weeklyReflections[1]?.energy_level || 0;
+        const prevScore = Math.round(((prevMood + prevEnergy) / 2) * 10);
+        msDelta = msScore - prevScore;
+      }
+      setMentalStatusScore(msScore);
+      setMentalStatusDelta(msDelta);
     };
+
     loadDashboardData();
   }, []);
 
-  // AnimatedCircle for SVG
+  // ────────────────────────────────────────────────────────────────────────────
+  // 7. AnimatedCircle for SVG progress
+  // ────────────────────────────────────────────────────────────────────────────
   const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-  // Compact Snapshot Card
+  // ────────────────────────────────────────────────────────────────────────────
+  // 8. Compact Snapshot Card
+  // ────────────────────────────────────────────────────────────────────────────
   const CompactSnapshotCard: React.FC<{
     label: string;
+    valueOutOf10: number;
     percentage: number;
     color: string;
-    icon: keyof typeof Ionicons.glyphMap;
-  }> = ({ label, percentage, color, icon }) => (
-    <View style={styles.compactCard}>
-      <View style={styles.compactCardHeader}>
-        <Ionicons name={icon as any} size={16} color={color} />
-        <Text style={styles.compactLabel}>{label}</Text>
+    icon: string;
+    style?: any;
+  }> = ({ label, valueOutOf10, percentage, color, icon, style }) => {
+    return (
+      <View style={[styles.compactCard, style]}>
+        <View style={styles.compactCardHeader}>
+          <Text style={[styles.compactLabel, { color: Colors.textMuted }]}>{label}</Text>
+        </View>
+        <View style={styles.compactCardContent}>
+          <CircularProgress percentage={percentage} size={48} color={color} strokeWidth={4} />
+          <Text style={[styles.compactPercentage, { color, marginLeft: 12 }]}>{valueOutOf10}/10</Text>
+        </View>
       </View>
-      <View style={styles.compactCardContent}>
-        <CircularProgress percentage={percentage} size={40} color={color} strokeWidth={4} />
-        <Text style={[styles.compactPercentage, { color }]}>
-          {percentage}%
-        </Text>
-      </View>
-    </View>
-  );
+    );
+  };
 
-  // Enhanced CircularProgress component
-  const CircularProgress: React.FC<{ 
-    percentage: number; 
-    size?: number; 
+  // ────────────────────────────────────────────────────────────────────────────
+  // 9. Enhanced CircularProgress
+  // ────────────────────────────────────────────────────────────────────────────
+  const CircularProgress: React.FC<{
+    percentage: number;
+    size?: number;
     color: string;
     strokeWidth?: number;
-  }> = ({ percentage, size = 50, color, strokeWidth = 6 }) => {
+  }> = ({ percentage, size = 48, color, strokeWidth = 6 }) => {
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
     const animatedPercent = useSharedValue(0);
@@ -295,15 +580,16 @@ export default function DashboardScreen() {
     );
 
     const animatedProps = useAnimatedProps(() => {
-      const strokeDashoffset = circumference - (animatedPercent.value / 100) * circumference;
+      const strokeDashoffset =
+        circumference - (animatedPercent.value / 100) * circumference;
       return { strokeDashoffset };
     });
 
-    const animatedText = useAnimatedStyle(() => ({
-      color: color,
-      fontSize: 12,
-      fontWeight: 'bold',
-    }));
+    // Use React state for the displayed number inside the gauge
+    const [displayedPercent, setDisplayedPercent] = React.useState(0);
+    useEffect(() => {
+      setDisplayedPercent(percentage);
+    }, [percentage]);
 
     return (
       <View style={{ width: size, height: size }}>
@@ -312,7 +598,7 @@ export default function DashboardScreen() {
             cx={size / 2}
             cy={size / 2}
             r={radius}
-            stroke="rgba(148, 163, 184, 0.15)"
+            stroke={Colors.border}
             strokeWidth={strokeWidth}
             fill="none"
           />
@@ -340,152 +626,248 @@ export default function DashboardScreen() {
             alignItems: 'center',
           }}
         >
-          <Animated.Text style={animatedText}>
-            {Math.round(animatedPercent.value)}%
-          </Animated.Text>
+          <Text style={{ color, fontSize: 10, fontWeight: 'bold', textAlign: 'center' }}>
+            {displayedPercent}%
+          </Text>
         </View>
       </View>
     );
   };
 
   return (
-    <View style={styles.container}>
-      {/* Header with Gradient */}
-      <LinearGradient
-        colors={['#667EEA', '#764BA2']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.headerGradient, { paddingTop: 30, minHeight: 120 }]}
-      >
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.greetingBg }}>
+      <StatusBar backgroundColor={Colors.greetingBg} barStyle="light-content" />
+      <View style={[styles.headerGradient, { backgroundColor: Colors.greetingBg }]}> 
         <View style={styles.headerContent}>
           <View>
-            <Text style={styles.greetingSmaller}>{getCurrentGreeting()}, {userName}</Text>
+            <Text style={styles.greetingSmall}>{getCurrentGreeting()}, {userName}</Text>
             <Text style={styles.dateText}>{getCurrentDate()}</Text>
           </View>
         </View>
-      </LinearGradient>
-
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* Wellness Overview - Compact Grid */}
-        <View style={styles.overviewSection}>
-          <Text style={styles.sectionTitle}>Wellness Overview</Text>
-          <View style={styles.compactGrid}>
-            <CompactSnapshotCard
-              label="Mood"
-              percentage={averageMood}
-              color="#10B981"
-              icon="happy-outline"
-            />
-            <CompactSnapshotCard
-              label="Energy"
-              percentage={averageEnergy}
-              color="#6366F1"
-              icon="flash-outline"
-            />
-            <CompactSnapshotCard
-              label="Quality"
-              percentage={reflectionQuality}
-              color="#F59E0B"
-              icon="star-outline"
-            />
-            <CompactSnapshotCard
-              label="Growth"
-              percentage={growth}
-              color="#EC4899"
-              icon="trending-up-outline"
-            />
-          </View>
-        </View>
-
-        {/* Quick Stats Banner */}
-        <View style={styles.quickStatsContainer}>
-          <View style={[styles.quickStatsBanner, { backgroundColor: 'white' }]}>
-            <AnimatedStat value={dayStreak} label="Day Streak" decimals={0} />
-            <View style={styles.statSeparator} />
-            <AnimatedStat value={avgRating} label="Avg Rating" decimals={1} />
-            <View style={styles.statSeparator} />
-            <AnimatedStat value={entries} label="Entries" decimals={0} />
-          </View>
-        </View>
-
-        {/* Enhanced Mood Chart */}
-        <View style={styles.chartContainer}>
-          <View style={styles.chartHeader}>
-            <View>
-              <Text style={styles.chartTitle}>Weekly Mood Pattern</Text>
-              <Text style={styles.chartSubtitle}>Your emotional journey</Text>
-            </View>
-          </View>
-          {/* Animated Mood Bars */}
-          <AnimatedMoodBars moodData={moodData} />
-          {moodData && moodData.filter(d => d.value > 0).length > 0 ? (
-            <View style={styles.chartInsight}>
-              <View style={styles.insightIcon}>
-                <Ionicons name="bulb" size={14} color="#F59E0B" />
-              </View>
-              <Text style={styles.insightText}>
-                {moodData.filter(d => d.value >= 0.6).length >= 3 
-                  ? `You've had ${moodData.filter(d => d.value >= 0.6).length} good mood days this week!`
-                  : "Keep logging to see more insights here."}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.chartInsight}>
-               <View style={styles.insightIcon}>
-                <Ionicons name="information-circle-outline" size={14} color="#64748B" />
-              </View>
-              <Text style={styles.insightText}>
-                Log your mood daily to see your weekly patterns.
-              </Text>
+      </View>
+      <View style={{ flex: 1, backgroundColor: Colors.background }}>
+        <ScrollView
+          ref={scrollRef}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* ┌────────────────────────────────────────────────────────────────────┐
+               │  WEEKLY AI CARDS                                                │
+               └────────────────────────────────────────────────────────────────────┘ */}
+          {weeklyCards.length > 0 && (
+            <View style={enhancedCardStyles.cardsContainer}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={enhancedCardStyles.cardsScrollView}
+                decelerationRate="fast"
+                snapToInterval={CARD_WIDTH + 16}
+                snapToAlignment="start"
+              >
+                {weeklyCards.map((card, index) => (
+                  <View
+                    key={index}
+                    style={[enhancedCardStyles.aiCard, { backgroundColor: card.color }]}
+                  >
+                    <View style={enhancedCardStyles.aiCardHeaderRow}>
+                      <View style={enhancedCardStyles.aiCardSmallCircle}>
+                        <Image source={require('../assets/icons/ai.png')} style={{ width: 16, height: 16 }} />
+                      </View>
+                      <Text style={enhancedCardStyles.aiCardHeaderText}>Ava suggests</Text>
+                    </View>
+                    <Text style={enhancedCardStyles.aiCardTitle}>{card.title}</Text>
+                    <Text style={enhancedCardStyles.aiCardContent}>{card.content}</Text>
+                  </View>
+                ))}
+              </ScrollView>
             </View>
           )}
-        </View>
 
-        {/* Weekly Insights */}
-        <WeeklyInsights />
+          {/* ┌────────────────────────────────────────────────────────────────────┐
+               │  QUICK STATS (Streak | Avg Rating | Entries)                    │
+               └────────────────────────────────────────────────────────────────────┘ */}
+          <View style={styles.overviewSection}>
+            <Text style={styles.sectionTitle}>Quick Stats</Text>
+            <View style={styles.quickStatsContainer}>
+              <View style={styles.quickStatsBanner}>
+                <AnimatedStat value={dayStreak} label="Day Streak" decimals={0} />
+                <View style={styles.statSeparator} />
+                <AnimatedStat value={avgRating} label="Avg Rating" decimals={1} />
+                <View style={styles.statSeparator} />
+                <AnimatedStat value={entries} label="Entries" decimals={0} />
+              </View>
+            </View>
+            <View style={styles.compactGrid}>
+              <CompactSnapshotCard
+                label="Mood"
+                valueOutOf10={
+                  typeof latestWeeklyReflection?.mood_score === 'number'
+                    ? Number(Number(latestWeeklyReflection.mood_score).toFixed(1))
+                    : Number((averageMood / 10).toFixed(1))
+                }
+                percentage={
+                  typeof latestWeeklyReflection?.mood_score === 'number'
+                    ? Math.round(Number(latestWeeklyReflection.mood_score) * 10)
+                    : Math.round(averageMood)
+                }
+                color="#2EB67D"
+                icon="happy-outline"
+                style={{ marginHorizontal: 8, flex: 1 }}
+              />
+              <CompactSnapshotCard
+                label="Energy"
+                valueOutOf10={
+                  typeof latestWeeklyReflection?.energy_level === 'number'
+                    ? Number(Number(latestWeeklyReflection.energy_level).toFixed(1))
+                    : Number((averageEnergy / 10).toFixed(1))
+                }
+                percentage={
+                  typeof latestWeeklyReflection?.energy_level === 'number'
+                    ? Math.round(Number(latestWeeklyReflection.energy_level) * 10)
+                    : Math.round(averageEnergy)
+                }
+                color="#ECB22E"
+                icon="flash-outline"
+                style={{ marginHorizontal: 8, flex: 1 }}
+              />
+            </View>
+            {moodEnergyCard && (
+              <View style={[enhancedCardStyles.aiCard, { backgroundColor: moodEnergyCard.color, width: '100%', marginTop: 10, marginBottom: 10, marginHorizontal: 8 }]}> 
+                <View style={enhancedCardStyles.aiCardHeaderRow}>
+                  <View style={enhancedCardStyles.aiCardSmallCircle}>
+                    <Image source={require('../assets/icons/ai.png')} style={{ width: 16, height: 16 }} />
+                  </View>
+                  <Text style={enhancedCardStyles.aiCardHeaderText}>Advice from Ava</Text>
+                </View>
+                <Text style={enhancedCardStyles.aiCardTitle}>{moodEnergyCard.title}</Text>
+                <Text style={enhancedCardStyles.aiCardContent}>{moodEnergyCard.content}</Text>
+              </View>
+            )}
+          </View>
 
-        {/* Emotional Tags - Redesigned */}
-        <EmotionalTagCloud />
+          {/* ┌────────────────────────────────────────────────────────────────────┐
+               │  THIS WEEK'S MOOD (Bar Chart)                                    │
+               └────────────────────────────────────────────────────────────────────┘ */}
+          <Text
+            style={{
+              fontSize: 20,
+              fontWeight: '700',
+              color: Colors.textPrimary,
+              marginLeft: 24,
+              marginBottom: 8,
+            }}
+          >
+            This week's mood
+          </Text>
+          <View style={styles.chartContainer}>
+            <AnimatedMoodBars moodData={moodData} />
+            {moodData && moodData.filter((d) => d.value > 0).length > 0 ? (
+              <View style={styles.chartInsight}>
+                <View
+                  style={[
+                    styles.insightIcon,
+                    { backgroundColor: Colors.accentLight },
+                  ]}
+                >
+                  <Ionicons name="bulb" size={14} color={Colors.accent} />
+                </View>
+                <Text style={styles.insightText}>
+                  {moodData.filter((d) => d.value >= 0.6).length >= 3
+                    ? `You've had ${
+                        moodData.filter((d) => d.value >= 0.6).length
+                      } good mood days this week!`
+                    : 'Chat with Ava to get more insights on your mood.'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.chartInsight}>
+                <View
+                  style={[
+                    styles.insightIcon,
+                    { backgroundColor: Colors.border },
+                  ]}
+                >
+                  <Ionicons
+                    name="information-circle-outline"
+                    size={14}
+                    color={Colors.textMuted}
+                  />
+                </View>
+                <Text style={styles.insightText}>
+                  Log your mood daily to see your weekly patterns.
+                </Text>
+              </View>
+            )}
+          </View>
 
-        {/* Recent Reflections */}
-        <RecentReflections />
+          {/* ┌────────────────────────────────────────────────────────────────────┐
+               │  RECENT REFLECTIONS                                                │
+               └────────────────────────────────────────────────────────────────────┘ */}
+          <RecentReflections />
 
-        {/* Bottom Padding */}
-        <View style={{ height: 32 }} />
-      </ScrollView>
-    </View>
+          {/* Bottom Padding */}
+          <View style={{ height: 32 }} />
+
+          {/* ┌────────────────────────────────────────────────────────────────────┐
+               │  TEST CALL BUTTON                                                 │
+               └────────────────────────────────────────────────────────────────────┘ */}
+          <TouchableOpacity
+            style={styles.testCallButton}
+            onPress={() => (navigation as any).navigate('Call')}
+            activeOpacity={0.85}
+          >
+            <LinearGradient
+              colors={[Colors.secondary, Colors.primary]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.testCallButtonGradient}
+            >
+              <Ionicons
+                name="call"
+                size={22}
+                color={Colors.cardBackground}
+                style={{ marginRight: 8 }}
+              />
+              <Text style={styles.testCallButtonText}>Test Call</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    </SafeAreaView>
   );
 }
 
-// Individual Mood Bar component
-const MoodBar: React.FC<{ data: { day: string; value: number; color: string }; style: any }> = ({ data, style }) => {
+// ──────────────────────────────────────────────────────────────────────────────
+// 10. Mood Bar and Animated Bars (unchanged logic; just using Colors if needed)
+// ──────────────────────────────────────────────────────────────────────────────
+const MoodBar: React.FC<{
+  data: { day: string; value: number; color: string };
+  style: any;
+}> = ({ data, style }) => {
   const barHeight = useSharedValue(0);
-
   useFocusEffect(
     React.useCallback(() => {
-      barHeight.value = 0; // Reset animation
-      barHeight.value = withTiming(data.value * 80, { // 80 is the max height of the bar
+      barHeight.value = 0;
+      barHeight.value = withTiming(data.value * 80, {
         duration: 900,
         easing: Easing.out(Easing.exp),
       });
-    }, [data.value]) // Rerun animation if value changes
+    }, [data.value])
   );
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      height: barHeight.value,
-    };
-  });
-
+  const animatedStyle = useAnimatedStyle(() => ({
+    height: barHeight.value,
+  }));
   return (
     <View style={style.barColumn}>
       <View style={style.barWrapper}>
-        <Animated.View style={[{ width: '100%', borderRadius: 8, backgroundColor: data.color }, animatedStyle]}>
+        <Animated.View
+          style={[
+            { width: '100%', borderRadius: 8, backgroundColor: data.color },
+            animatedStyle,
+          ]}
+        >
           <LinearGradient
-            colors={[data.color, `${data.color}80`]} // Adjust gradient opacity if needed
+            colors={[data.color, `${data.color}80`]}
             style={{
               width: '100%',
               height: '100%',
@@ -502,10 +884,17 @@ const MoodBar: React.FC<{ data: { day: string; value: number; color: string }; s
   );
 };
 
-// Animated Mood Bars component
-const AnimatedMoodBars: React.FC<{ moodData: { day: string; value: number; color: string }[] }> = ({ moodData }) => {
+const AnimatedMoodBars: React.FC<{
+  moodData: { day: string; value: number; color: string }[];
+}> = ({ moodData }) => {
   if (!moodData || moodData.length === 0) {
-    return <View style={styles.chartBars}><Text>No mood data available for this week.</Text></View>;
+    return (
+      <View style={styles.chartBars}>
+        <Text style={{ color: Colors.textMuted }}>
+          No mood data available for this week.
+        </Text>
+      </View>
+    );
   }
   return (
     <View style={styles.chartBars}>
@@ -516,8 +905,14 @@ const AnimatedMoodBars: React.FC<{ moodData: { day: string; value: number; color
   );
 };
 
-// AnimatedStat component for counting up numbers
-const AnimatedStat: React.FC<{ value: number; label: string; decimals?: number }> = ({ value, label, decimals = 0 }) => {
+// ──────────────────────────────────────────────────────────────────────────────
+// 11. AnimatedStat (same as before, just text color unified)
+// ──────────────────────────────────────────────────────────────────────────────
+const AnimatedStat: React.FC<{ value: number; label: string; decimals?: number }> = ({
+  value,
+  label,
+  decimals = 0,
+}) => {
   const animatedValue = useSharedValue(0);
   useFocusEffect(
     React.useCallback(() => {
@@ -526,7 +921,7 @@ const AnimatedStat: React.FC<{ value: number; label: string; decimals?: number }
     }, [value])
   );
   const animatedText = useAnimatedStyle(() => ({
-    color: '#667EEA',
+    color: Colors.textPrimary,
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 4,
@@ -541,49 +936,46 @@ const AnimatedStat: React.FC<{ value: number; label: string; decimals?: number }
   );
 };
 
+// ──────────────────────────────────────────────────────────────────────────────
+// 12. Core Styles (updated to use Colors)
+// ──────────────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Colors.background,
+  },
+  scrollContent: {
+    paddingTop: 20,
   },
 
-  // Header Styles
+  // ───── HEADER ────────────────────────────────────────────────────────────────
   headerGradient: {
     paddingBottom: 0,
+    paddingTop: 0,
+    backgroundColor: Colors.greetingBg,
   },
   headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingTop: 16,
+    paddingTop: 0,
     paddingBottom: 24,
   },
-  greeting: {
-    fontSize: 28,
+  greetingSmall: {
+    fontSize: 27,
     fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 4,
-  },
-  greetingSmaller: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: 'white',
+    color: '#fff',
     marginBottom: 2,
-    paddingTop: 18,
+    paddingTop: 10,
   },
   dateText: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
+    color: '#fff',
     fontWeight: '500',
   },
 
-  // Scroll Content
-  scrollContent: {
-    paddingTop: 20,
-  },
-
-  // Section Styles
+  // ───── OVERVIEW SECTION ─────────────────────────────────────────────────────
   overviewSection: {
     paddingHorizontal: 24,
     marginBottom: 24,
@@ -591,18 +983,19 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#0F172A',
+    color: Colors.textPrimary,
     marginBottom: 16,
   },
 
-  // Compact Grid Styles
+  // ───── COMPACT GRID ─────────────────────────────────────────────────────────
   compactGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+    flexWrap: 'nowrap',
+    gap: 0,
+    marginHorizontal: 0,
   },
   compactCard: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.cardBackground,
     borderRadius: 16,
     padding: 16,
     flex: 1,
@@ -613,7 +1006,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: Colors.border,
   },
   compactCardHeader: {
     flexDirection: 'row',
@@ -624,7 +1017,7 @@ const styles = StyleSheet.create({
   compactLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#64748B',
+    color: Colors.textMuted,
   },
   compactCardContent: {
     flexDirection: 'row',
@@ -632,14 +1025,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   compactPercentage: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
   },
 
-  // Quick Stats Banner
+  // ───── QUICK STATS BANNER ────────────────────────────────────────────────────
   quickStatsContainer: {
-    paddingHorizontal: 24,
-    marginBottom: 2,
+    marginBottom: 18,
+    marginTop: 0,
+    paddingHorizontal: 0,
   },
   quickStatsBanner: {
     borderRadius: 20,
@@ -652,6 +1046,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 8,
     elevation: 2,
+    backgroundColor: Colors.cardBackground,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   quickStat: {
     alignItems: 'center',
@@ -659,46 +1056,26 @@ const styles = StyleSheet.create({
   },
   quickStatLabel: {
     fontSize: 12,
-    color: '#64748B',
+    color: Colors.textMuted,
     fontWeight: '600',
   },
   statSeparator: {
     width: 1,
     height: 40,
-    backgroundColor: '#CBD5E1',
+    backgroundColor: Colors.border,
     marginHorizontal: 16,
   },
 
-  // Enhanced Chart Container
+  // ───── CHART CONTAINER ──────────────────────────────────────────────────────
   chartContainer: {
-    backgroundColor: 'white',
+    backgroundColor: Colors.cardBackground,
     borderRadius: 24,
     padding: 24,
-    margin: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
+    marginHorizontal: 20,
+    marginTop: 4,
     elevation: 4,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
-  },
-  chartHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 20,
-  },
-  chartTitle: {
-    color: '#0F172A',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  chartSubtitle: {
-    color: '#64748B',
-    fontSize: 14,
-    fontWeight: '500',
+    borderColor: Colors.border,
   },
   chartBars: {
     flexDirection: 'row',
@@ -715,16 +1092,16 @@ const styles = StyleSheet.create({
   },
   barWrapper: {
     width: 24,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Colors.background,
     borderRadius: 8,
     height: 80,
     justifyContent: 'flex-end',
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: Colors.border,
   },
   barLabel: {
-    color: '#64748B',
+    color: Colors.textMuted,
     fontSize: 11,
     marginTop: 8,
     fontWeight: '600',
@@ -734,24 +1111,110 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     padding: 16,
-    backgroundColor: '#FFFBEB',
+    backgroundColor: Colors.secondaryLight,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#FEF3C7',
+    borderColor: '#B2DFDB',
+    marginTop: 8,
   },
   insightIcon: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#FEF3C7',
+    backgroundColor: Colors.accentLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   insightText: {
-    color: '#92400E',
+    color: Colors.textPrimary,
     fontSize: 14,
     fontWeight: '600',
     flex: 1,
     lineHeight: 20,
+  },
+
+  // ───── TEST CALL BUTTON ─────────────────────────────────────────────────────
+  testCallButton: {
+    marginHorizontal: 24,
+    marginBottom: 24,
+    borderRadius: 16,
+    overflow: 'hidden',
+    elevation: 3,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+  },
+  testCallButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 16,
+  },
+  testCallButtonText: {
+    color: Colors.cardBackground,
+    fontSize: 18,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+
+  // ───── MENTAL STATUS CARD ───────────────────────────────────────────────────
+  mentalStatusCard: {
+    marginTop: 16,
+    marginHorizontal: 0,
+    padding: 20,
+    backgroundColor: Colors.cardBackground,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'flex-start',
+  },
+  mentalStatusLabel: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.primary,
+    marginBottom: 2,
+  },
+  mentalStatusSubtitle: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    marginTop: 0,
+    marginBottom: 12,
+    fontWeight: '500',
+  },
+  mentalStatusDelta: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  growthBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 6,
+  },
+  growthBarTrack: {
+    flex: 1,
+    height: 14,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 7,
+    overflow: 'hidden',
+    marginRight: 12,
+  },
+  growthBarFill: {
+    height: 14,
+    borderRadius: 7,
+  },
+  growthBarPercent: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    minWidth: 48,
+    textAlign: 'right',
   },
 });

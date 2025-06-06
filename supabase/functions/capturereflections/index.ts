@@ -295,6 +295,24 @@ serve(async (req) => {
     }
 
     console.log("✅ Successfully inserted data:", data);
+
+    // After successfully inserting the reflection, trigger the card generation
+    try {
+      console.log("🚀 Triggering weekly card generation...");
+      const { error: invokeError } = await supabase.functions.invoke('generate-weekly-cards', {
+        body: { userId: user_id, weekStartDate: week_start_date },
+      });
+
+      if (invokeError) {
+        // Log the error but don't fail the whole request, as the primary goal (saving reflection) succeeded.
+        console.error("⚠️ Error invoking generate-weekly-cards function:", invokeError);
+      } else {
+        console.log("✅ Successfully triggered card generation.");
+      }
+    } catch (e) {
+      console.error("🔥 Exception when triggering card generation:", e);
+    }
+
     return new Response(JSON.stringify({ 
       success: true, 
       message: "Weekly reflection saved successfully",

@@ -59,10 +59,10 @@ export default function ChatScreen() {
           if (!isActive) return;
           const initialMessageText = `Hey ${name}, feel free to share any updates, challenges or noteworthy events with me and I'll add them to your current week to reflect on.`;
           const initialAiMessage: Message = {
-            id: Date.now().toString(),
+              id: Date.now().toString(),
             text: initialMessageText,
-            sender: 'ai',
-            timestamp: new Date(),
+              sender: 'ai',
+              timestamp: new Date(),
           };
           setMessages([initialAiMessage]);
           // Add AI's initial message to conversation history for OpenAI
@@ -81,8 +81,8 @@ export default function ChatScreen() {
     // Fetch user ID on mount if not already set by useFocusEffect (e.g. if screen was already mounted)
     const fetchUser = async () => {
       if (!userId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) setUserId(user.id);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) setUserId(user.id);
       }
     };
     fetchUser();
@@ -113,7 +113,7 @@ export default function ChatScreen() {
     setConversationHistoryForAI(updatedHistoryForAI);
 
     setIsTyping(true);
-
+    
     try {
       console.log("Calling dailyLogChat with history:", updatedHistoryForAI);
       const { data: edgeFunctionResponse, error: edgeFunctionError } = await supabase.functions.invoke('dailyLogChat', {
@@ -129,7 +129,7 @@ export default function ChatScreen() {
       }
 
       if (edgeFunctionResponse && edgeFunctionResponse.reply) {
-        const aiResponse: Message = {
+      const aiResponse: Message = {
           id: (Date.now() + 1).toString(),
           text: edgeFunctionResponse.reply, // Response from Edge Function
           sender: 'ai',
@@ -262,12 +262,9 @@ export default function ChatScreen() {
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
         >
-          <LinearGradient
-            colors={['#F9FAFB', '#F3F4F6']}
-            style={{ flex: 1 }}
-          >
+          <View style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
             {/* Messages List */}
             <FlatList
               ref={flatListRef}
@@ -366,7 +363,7 @@ export default function ChatScreen() {
                 />
               </TouchableOpacity>
             </View>
-          </LinearGradient>
+          </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>

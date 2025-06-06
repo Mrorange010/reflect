@@ -270,12 +270,9 @@ serve(async (req: Request) => {
       energy_level_reason: null as string | null,
       notable_events: null as string | null,
       notable_events_reason: null as string | null,
-      thoughts: null as string | null, // maps to general_notes
+      thoughts: null as string | null, // maps to general_notes from prompt
       challenges: null as string | null,
       achievements: null as string | null,
-      gratitude: null as string | null,
-      self_care_actions: null as string | null,
-      support_needed: null as string | null,
       sentiment_summary: null as string | null,
       sentiment_summary_reason: null as string | null,
       raw_input: message,
@@ -320,7 +317,13 @@ serve(async (req: Request) => {
       });
     }
     
-    const finalAiResponse = aiResponseText.startsWith("Ava:") ? aiResponseText : `Ava: ${aiResponseText}`;
+    // The AI's response might include "Ava:" due to the prompt. We'll remove it here.
+    let finalAiResponse = aiResponseText;
+    if (finalAiResponse.startsWith("Ava:")) {
+      finalAiResponse = finalAiResponse.substring(4).trim();
+    } else if (finalAiResponse.startsWith("Ava:")) { // To catch slight variations
+      finalAiResponse = finalAiResponse.substring(5).trim();
+    }
 
     return new Response(JSON.stringify({ reply: finalAiResponse }), {
       status: 200,
