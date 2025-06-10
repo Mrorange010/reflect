@@ -11,8 +11,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { NavigationProp } from '../navigation';
+import Animated, { 
+  FadeInUp, 
+  FadeInDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
 import { supabase } from '../utils/supabase';
+import { useTheme } from '../contexts/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
@@ -35,391 +43,280 @@ interface Reflection {
   updated_at: string;
 }
 
-type ViewMode = 'grid' | 'list';
+// Apple Health-style subtle gradient background (matching dashboard)
+const HealthGradientBackground = () => {
+  const { isDark } = useTheme();
+  return (
+    <View style={StyleSheet.absoluteFillObject}>
+      {/* Background color */}
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: isDark ? '#000000' : '#FFFFFF' }]} />
+      
+      {/* Top subtle gradient overlay - matching dashboard style */}
+      <LinearGradient
+        colors={isDark 
+          ? ['rgba(0, 122, 255, 0.25)', 'rgba(52, 199, 89, 0.1)', 'transparent'] as const
+          : ['rgba(0, 122, 255, 0.15)', 'rgba(52, 199, 89, 0.08)', 'transparent'] as const
+        }
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 300, // Only covers top portion like dashboard
+        }}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        locations={[0, 0.6, 1]}
+      />
+    </View>
+  );
+};
+
+// Reflection Card Component
+const ReflectionCard = ({ reflection, index, isDark, onPress }: { 
+  reflection: Reflection, 
+  index: number, 
+  isDark: boolean,
+  onPress: () => void 
+}) => {
+  const getMoodColor = (moodScore: number | null): string => {
+    if (!moodScore || moodScore === 0) return '#8E8E93';
+    if (moodScore >= 8) return '#34C759';
+    if (moodScore >= 6) return '#007AFF';
+    if (moodScore >= 4) return '#FF9500';
+    return '#FF3B30';
+  };
+
+  const formatWeekRange = (weekStartDate: string): string => {
+    try {
+      const startDate = new Date(weekStartDate);
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6);
+      
+      return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid date';
+    }
+  };
+
+  const getWeekNumber = (weekStartDate: string): string => {
+    try {
+      const startDate = new Date(weekStartDate);
+      const startOfYear = new Date(startDate.getFullYear(), 0, 1);
+      const days = Math.floor((startDate.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
+      const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7);
+      return `Week ${weekNumber}`;
+    } catch (error) {
+      console.error('Error calculating week number:', error);
+      return 'Week --';
+    }
+  };
+
+  return (
+    <Animated.View entering={FadeInUp.delay(index * 100).duration(600)}>
+      <TouchableOpacity
+        style={[styles.reflectionCard, isDark && styles.reflectionCardDark]}
+        onPress={onPress}
+        activeOpacity={0.8}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.cardHeaderLeft}>
+            <Text style={[styles.weekLabel, isDark && styles.weekLabelDark]}>
+              {getWeekNumber(reflection.week_start_date)}
+            </Text>
+            <Text style={[styles.dateRange, isDark && styles.dateRangeDark]}>
+              {formatWeekRange(reflection.week_start_date)}
+            </Text>
+          </View>
+          
+          <View style={styles.cardHeaderRight}>
+            {reflection.reflection_quality && (
+              <View style={[styles.qualityBadge, isDark && styles.qualityBadgeDark]}>
+                <Ionicons name="star" size={12} color="#FF9500" />
+                <Text style={[styles.qualityText, isDark && styles.qualityTextDark]}>
+                  {reflection.reflection_quality}
+                </Text>
+              </View>
+            )}
+            <Ionicons 
+              name="chevron-forward" 
+              size={16} 
+              color={isDark ? '#48484A' : '#C7C7CC'} 
+            />
+          </View>
+        </View>
+
+        {reflection.summary && (
+          <Text 
+            style={[styles.summaryText, isDark && styles.summaryTextDark]} 
+            numberOfLines={2}
+          >
+            {reflection.summary}
+          </Text>
+        )}
+
+        <View style={styles.metricsRow}>
+          <View style={styles.metricItem}>
+            <View style={[styles.metricBadge, { backgroundColor: getMoodColor(reflection.mood_score) }]}>
+              <Ionicons name="happy-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.metricValue}>
+                {reflection.mood_score ? reflection.mood_score.toFixed(1) : '—'}
+              </Text>
+            </View>
+            <Text style={[styles.metricLabel, isDark && styles.metricLabelDark]}>Mood</Text>
+          </View>
+
+          <View style={styles.metricItem}>
+            <View style={[styles.metricBadge, { backgroundColor: '#34C759' }]}>
+              <Ionicons name="flash-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.metricValue}>
+                {reflection.energy_level ? reflection.energy_level.toFixed(1) : '—'}
+              </Text>
+            </View>
+            <Text style={[styles.metricLabel, isDark && styles.metricLabelDark]}>Energy</Text>
+          </View>
+
+          {reflection.emotional_tags && (
+            <View style={styles.tagsContainer}>
+              {reflection.emotional_tags.split(',').slice(0, 2).map((tag, i) => {
+                const trimmedTag = tag.trim();
+                if (!trimmedTag) return null;
+                return (
+                  <View key={i} style={[styles.tag, isDark && styles.tagDark]}>
+                    <Text style={[styles.tagText, isDark && styles.tagTextDark]}>
+                      {trimmedTag}
+                    </Text>
+                  </View>
+                );
+              }).filter(Boolean)}
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
 
 export default function WeeklyReflectionsScreen() {
-  const navigation = useNavigation<NavigationProp>();
+  const navigation = useNavigation<any>();
+  const { isDark } = useTheme();
+  
   const [reflections, setReflections] = useState<Reflection[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   useEffect(() => {
     const fetchReflections = async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('weekly_reflections')
-        .select('*')
-        .order('week_start_date', { ascending: false });
-      if (error) {
-        console.error('Error fetching reflections:', error.message);
-      } else {
-        setReflections(data || []);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          console.error('No authenticated user');
+          setLoading(false);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from('weekly_reflections')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('week_start_date', { ascending: false });
+          
+        if (error) {
+          console.error('Error fetching reflections:', error.message);
+        } else {
+          console.log('Fetched reflections:', data); // Debug log
+          setReflections(data || []);
+        }
+      } catch (error) {
+        console.error('Error in fetchReflections:', error);
       }
       setLoading(false);
     };
     fetchReflections();
   }, []);
 
-  // Helper function to get mood color
-  const getMoodColor = (moodScore: number | null): string => {
-    if (!moodScore) return '#9CA3AF';
-    if (moodScore >= 8) return '#10B981';
-    if (moodScore >= 6) return '#F59E0B';
-    if (moodScore >= 4) return '#EF4444';
-    return '#DC2626';
-  };
-
-  // Helper function to get sentiment color
-  const getSentimentColor = (sentiment: string | null): string => {
-    switch (sentiment?.toLowerCase()) {
-      case 'positive':
-        return '#10B981';
-      case 'negative':
-        return '#EF4444';
-      case 'neutral':
-      default:
-        return '#6B7280';
-    }
-  };
-
-  // Helper function to format week range
-  const formatWeekRange = (weekStartDate: string): string => {
-    const startDate = new Date(weekStartDate);
-    const endDate = new Date(startDate);
-    endDate.setDate(startDate.getDate() + 6);
-    
-    return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-  };
-
-  // Helper function to get week number
-  const getWeekNumber = (weekStartDate: string): string => {
-    const startDate = new Date(weekStartDate);
-    const startOfYear = new Date(startDate.getFullYear(), 0, 1);
-    const days = Math.floor((startDate.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
-    const weekNumber = Math.ceil((days + startOfYear.getDay() + 1) / 7);
-    return `Week ${weekNumber}`;
-  };
-
-  // Calculate stats
-  const totalReflections = reflections.length;
-  const avgMoodScore = reflections
-    .filter(r => r.mood_score)
-    .reduce((sum, r) => sum + (r.mood_score || 0), 0) / reflections.filter(r => r.mood_score).length || 0;
-  const recentWeeks = reflections.slice(0, 4).length;
-
-  const renderGridView = () => {
-    const pairs = [];
-    for (let i = 0; i < reflections.length; i += 2) {
-      pairs.push(reflections.slice(i, i + 2));
-    }
-
-    return (
-      <View style={styles.gridContainer}>
-        {pairs.map((pair, pairIndex) => (
-          <View key={pairIndex} style={styles.gridRow}>
-            {pair.map((reflection, index) => (
-              <TouchableOpacity
-                key={reflection.id}
-                style={[
-                  styles.gridCard,
-                  pairIndex === 0 && index === 0 && styles.featuredCard
-                ]}
-                onPress={() => navigation.navigate('ReflectionDetail', { reflection })}
-                activeOpacity={0.8}
-              >
-                <LinearGradient
-                  colors={
-                    pairIndex === 0 && index === 0 
-                      ? ['#667EEA', '#764BA2']
-                      : ['#FFFFFF', '#F8FAFC']
-                  }
-                  style={styles.gridCardGradient}
-                >
-                  {/* Header */}
-                  <View style={styles.gridCardHeader}>
-                    <Text style={[
-                      styles.weekLabel,
-                      pairIndex === 0 && index === 0 && styles.featuredWeekLabel
-                    ]}>
-                      {getWeekNumber(reflection.week_start_date)}
-                    </Text>
-                    <View style={styles.qualityBadge}>
-                      <Ionicons 
-                        name="star" 
-                        size={12} 
-                        color={pairIndex === 0 && index === 0 ? '#FFFFFF' : '#F59E0B'} 
-                      />
-                      <Text style={[
-                        styles.qualityScore,
-                        pairIndex === 0 && index === 0 && styles.featuredQualityScore
-                      ]}>
-                        {reflection.reflection_quality || '—'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Date Range */}
-                  <Text style={[
-                    styles.dateRange,
-                    pairIndex === 0 && index === 0 && styles.featuredDateRange
-                  ]}>
-                    {formatWeekRange(reflection.week_start_date)}
-                  </Text>
-
-                  {/* Metrics */}
-                  <View style={styles.gridMetrics}>
-                    <View style={styles.metricItem}>
-                      <Ionicons 
-                        name="happy-outline" 
-                        size={16} 
-                        color={getMoodColor(reflection.mood_score)} 
-                      />
-                      <Text style={[
-                        styles.metricValue,
-                        pairIndex === 0 && index === 0 && styles.featuredMetricValue
-                      ]}>
-                        {reflection.mood_score || '—'}
-                      </Text>
-                      <Text style={[
-                        styles.metricLabel,
-                        pairIndex === 0 && index === 0 && styles.featuredMetricLabel
-                      ]}>
-                        Mood
-                      </Text>
-                    </View>
-                    <View style={styles.metricItem}>
-                      <Ionicons 
-                        name="flash-outline" 
-                        size={16} 
-                        color={pairIndex === 0 && index === 0 ? '#FFFFFF' : '#6366F1'} 
-                      />
-                      <Text style={[
-                        styles.metricValue,
-                        pairIndex === 0 && index === 0 && styles.featuredMetricValue
-                      ]}>
-                        {reflection.energy_level || '—'}
-                      </Text>
-                      <Text style={[
-                        styles.metricLabel,
-                        pairIndex === 0 && index === 0 && styles.featuredMetricLabel
-                      ]}>
-                        Energy
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Summary */}
-                  {reflection.summary && (
-                    <Text style={[
-                      styles.gridSummary,
-                      pairIndex === 0 && index === 0 && styles.featuredSummary
-                    ]} numberOfLines={2}>
-                      {reflection.summary}
-                    </Text>
-                  )}
-
-                  {/* Sentiment Badge */}
-                  {reflection.sentiment && (
-                    <View style={[
-                      styles.sentimentBadge,
-                      { backgroundColor: getSentimentColor(reflection.sentiment) }
-                    ]}>
-                      <Text style={styles.sentimentText}>
-                        {reflection.sentiment.charAt(0).toUpperCase() + reflection.sentiment.slice(1)}
-                      </Text>
-                    </View>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            ))}
-            {pair.length === 1 && <View style={styles.gridCard} />}
-          </View>
-        ))}
-      </View>
-    );
-  };
-
-  const renderListView = () => (
-    <View style={styles.listContainer}>
-      {reflections.map((reflection, index) => (
-        <TouchableOpacity
-          key={reflection.id}
-          style={[
-            styles.listCard,
-            index === 0 && styles.featuredListCard
-          ]}
-          onPress={() => navigation.navigate('ReflectionDetail', { reflection })}
-          activeOpacity={0.8}
-        >
-          <View style={styles.listCardContent}>
-            {/* Left Section */}
-            <View style={styles.listCardLeft}>
-              <View style={[
-                styles.weekIndicator,
-                index === 0 && styles.featuredWeekIndicator
-              ]}>
-                <Text style={[
-                  styles.weekNumber,
-                  index === 0 && styles.featuredWeekNumber
-                ]}>
-                  {getWeekNumber(reflection.week_start_date).split(' ')[1]}
-                </Text>
-              </View>
-            </View>
-
-            {/* Center Section */}
-            <View style={styles.listCardCenter}>
-              <Text style={styles.listDateRange}>
-                {formatWeekRange(reflection.week_start_date)}
-              </Text>
-              {reflection.summary ? (
-                <Text style={styles.listSummary} numberOfLines={2}>
-                  {reflection.summary}
-                </Text>
-              ) : (
-                <Text style={styles.listGoals} numberOfLines={1}>
-                  {reflection.weekly_goals || 'No summary available'}
-                </Text>
-              )}
-              <View style={styles.listMetrics}>
-                <View style={styles.listMetricItem}>
-                  <Ionicons 
-                    name="happy-outline" 
-                    size={14} 
-                    color={getMoodColor(reflection.mood_score)} 
-                  />
-                  <Text style={styles.listMetricText}>
-                    Mood {reflection.mood_score || '—'}
-                  </Text>
-                </View>
-                <View style={styles.listMetricItem}>
-                  <Ionicons 
-                    name="flash-outline" 
-                    size={14} 
-                    color="#6366F1" 
-                  />
-                  <Text style={styles.listMetricText}>
-                    Energy {reflection.energy_level || '—'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Right Section */}
-            <View style={styles.listCardRight}>
-              {reflection.reflection_quality && (
-                <View style={styles.listQualityBadge}>
-                  <Ionicons name="star" size={12} color="#F59E0B" />
-                  <Text style={styles.listQualityText}>
-                    {reflection.reflection_quality}
-                  </Text>
-                </View>
-              )}
-              <Ionicons 
-                name="chevron-forward" 
-                size={16} 
-                color="#94A3B8" 
-                style={{ marginTop: 8 }}
-              />
-            </View>
-          </View>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-
   if (loading) {
     return (
-      <View style={styles.container}>
-        <LinearGradient
-          colors={['#667EEA', '#764BA2']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.headerGradient}
-        >
-          <SafeAreaView edges={['top']} style={{ backgroundColor: 'transparent' }}>
-            <View style={styles.headerContent}>
-              <Text style={styles.headerTitle}>Weekly Reflections</Text>
-              <Text style={styles.headerSubtitle}>Your journey of growth</Text>
-            </View>
-          </SafeAreaView>
-        </LinearGradient>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading reflections...</Text>
-        </View>
+      <View style={[styles.container, isDark && styles.containerDark]}>
+        <HealthGradientBackground />
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <View style={styles.loadingContainer}>
+            <Ionicons 
+              name="sync-outline" 
+              size={48} 
+              color={isDark ? '#8E8E93' : '#C7C7CC'} 
+            />
+            <Text style={[styles.loadingText, isDark && styles.loadingTextDark]}>
+              Loading reflections...
+            </Text>
+          </View>
+        </SafeAreaView>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
-      <LinearGradient
-        colors={['#667EEA', '#764BA2']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.headerGradient}
-      >
-        <SafeAreaView edges={['top']} style={{ backgroundColor: 'transparent' }}>
-          <View style={styles.headerContent}>
+    <View style={[styles.container, isDark && styles.containerDark]}>
+      <HealthGradientBackground />
+      
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Header */}
+          <Animated.View style={styles.header} entering={FadeInDown.delay(100).duration(600)}>
             <View>
-              <Text style={styles.headerTitle}>Weekly Reflections</Text>
-              <Text style={styles.headerSubtitle}>Your journey of growth</Text>
+              <Text style={[styles.title, isDark && styles.titleDark]}>
+                Weekly Reflections
+              </Text>
             </View>
-            <TouchableOpacity
-              style={styles.viewToggle}
-              onPress={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-            >
-              <Ionicons 
-                name={viewMode === 'grid' ? 'list' : 'grid'} 
-                size={20} 
-                color="#FFFFFF" 
-              />
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      </LinearGradient>
+          </Animated.View>
 
-      {/* Stats Card */}
-      <View style={styles.statsSection}>
-        <View style={styles.statsCard}>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{totalReflections}</Text>
-            <Text style={styles.statLabel}>Total Weeks</Text>
+          {/* Reflections List */}
+          <View style={styles.reflectionsSection}>
+            {reflections.length === 0 ? (
+              <Animated.View 
+                style={[styles.emptyCard, isDark && styles.emptyCardDark]}
+                entering={FadeInUp.delay(400).duration(600)}
+              >
+                <Ionicons 
+                  name="journal-outline" 
+                  size={48} 
+                  color={isDark ? '#48484A' : '#C7C7CC'} 
+                />
+                <Text style={[styles.emptyTitle, isDark && styles.emptyTitleDark]}>
+                  No Reflections Yet
+                </Text>
+                <Text style={[styles.emptyText, isDark && styles.emptyTextDark]}>
+                  Start your journey by creating your first weekly reflection
+                </Text>
+                <TouchableOpacity 
+                  style={[styles.startButton, isDark && styles.startButtonDark]}
+                  onPress={() => navigation.navigate('Call')}
+                >
+                  <Text style={styles.startButtonText}>Begin Reflection</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            ) : (
+              <View style={styles.reflectionsList}>
+                {reflections.map((reflection, index) => (
+                  <ReflectionCard
+                    key={reflection.id}
+                    reflection={reflection}
+                    index={index}
+                    isDark={isDark}
+                    onPress={() => navigation.navigate('ReflectionDetail', { reflection })}
+                  />
+                ))}
+              </View>
+            )}
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{avgMoodScore.toFixed(1)}</Text>
-            <Text style={styles.statLabel}>Avg Mood</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{recentWeeks}</Text>
-            <Text style={styles.statLabel}>Recent</Text>
-          </View>
-        </View>
-      </View>
 
-      {/* Content */}
-      <ScrollView 
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {reflections.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="document-text-outline" size={64} color="#CBD5E1" />
-            <Text style={styles.emptyTitle}>No Reflections Yet</Text>
-            <Text style={styles.emptySubtitle}>
-              Start your journey by creating your first weekly reflection
-            </Text>
-          </View>
-        ) : (
-          <>
-            {viewMode === 'grid' ? renderGridView() : renderListView()}
-          </>
-        )}
-      </ScrollView>
+          <View style={{ height: 100 }} />
+        </ScrollView>
+      </SafeAreaView>
     </View>
   );
 }
@@ -427,336 +324,218 @@ export default function WeeklyReflectionsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
   },
-
-  // Header Styles
-  headerGradient: {
-    paddingBottom: 0,
+  containerDark: {
+    backgroundColor: '#000000',
   },
-  headerContent: {
+  safeArea: {
+    flex: 1,
+  },
+  header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '500',
-  },
-  viewToggle: {
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-
-  // Stats Section
-  statsSection: {
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 16,
+    paddingBottom: 30,
   },
-  statsCard: {
-    backgroundColor: 'white',
-    flexDirection: 'row',
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+  title: {
+    fontSize: 34,
+    fontWeight: '700',
+    color: '#000000',
+    letterSpacing: -0.5,
   },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: '#F1F5F9',
-    marginHorizontal: 16,
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#667EEA',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-
-  // Scroll View
-  scrollView: {
-    flex: 1,
+  titleDark: {
+    color: '#FFFFFF',
   },
   scrollContent: {
-    paddingBottom: 32,
+    paddingBottom: 20,
   },
 
-  // Grid View Styles
-  gridContainer: {
+  // Reflections Section
+  reflectionsSection: {
+    marginBottom: 32,
+  },
+  reflectionsList: {
     paddingHorizontal: 20,
+    gap: 12,
   },
-  gridRow: {
-    flexDirection: 'row',
-    marginBottom: 16,
-    gap: 16,
-  },
-  gridCard: {
-    flex: 1,
-    height: 180,
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  featuredCard: {
-    height: 200,
-    shadowColor: '#667EEA',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  gridCardGradient: {
-    flex: 1,
+  reflectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     padding: 16,
-    justifyContent: 'space-between',
+    borderWidth: 0.5,
+    borderColor: '#E5E5EA',
   },
-  gridCardHeader: {
+  reflectionCardDark: {
+    backgroundColor: '#1C1C1E',
+    borderColor: '#38383A',
+  },
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  cardHeaderLeft: {
+    flex: 1,
+  },
+  cardHeaderRight: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   weekLabel: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#374151',
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#000000',
+    letterSpacing: -0.2,
   },
-  featuredWeekLabel: {
+  weekLabelDark: {
     color: '#FFFFFF',
+  },
+  dateRange: {
+    fontSize: 15,
+    color: '#8E8E93',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  dateRangeDark: {
+    color: '#8E8E93',
   },
   qualityBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: '#FFF8DC',
+    borderRadius: 8,
     gap: 4,
   },
-  qualityScore: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#374151',
+  qualityBadgeDark: {
+    backgroundColor: '#2C2C2E',
   },
-  featuredQualityScore: {
-    color: '#FFFFFF',
-  },
-  dateRange: {
+  qualityText: {
     fontSize: 12,
-    color: '#6B7280',
     fontWeight: '600',
-    marginTop: 4,
+    color: '#FF9500',
   },
-  featuredDateRange: {
-    color: 'rgba(255,255,255,0.9)',
+  qualityTextDark: {
+    color: '#FF9500',
   },
-  gridMetrics: {
+  summaryText: {
+    fontSize: 15,
+    lineHeight: 21,
+    color: '#3C3C43',
+    marginBottom: 12,
+    fontWeight: '400',
+  },
+  summaryTextDark: {
+    color: '#EBEBF5',
+  },
+  metricsRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 16,
-    marginTop: 12,
   },
   metricItem: {
     alignItems: 'center',
     gap: 4,
   },
-  metricValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#374151',
+  metricBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
   },
-  featuredMetricValue: {
+  metricValue: {
+    fontSize: 12,
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   metricLabel: {
-    fontSize: 10,
-    color: '#6B7280',
-    fontWeight: '600',
-  },
-  featuredMetricLabel: {
-    color: 'rgba(255,255,255,0.8)',
-  },
-  gridSummary: {
     fontSize: 12,
-    color: '#6B7280',
-    lineHeight: 16,
-    marginTop: 8,
+    fontWeight: '500',
+    color: '#8E8E93',
   },
-  featuredSummary: {
-    color: 'rgba(255,255,255,0.9)',
+  metricLabelDark: {
+    color: '#8E8E93',
   },
-  sentimentBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  sentimentText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-
-  // List View Styles
-  listContainer: {
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  listCard: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    marginBottom: 12,
-  },
-  featuredListCard: {
-    borderWidth: 2,
-    borderColor: '#667EEA',
-    shadowColor: '#667EEA',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  listCardContent: {
+  tagsContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-  },
-  listCardLeft: {
-    marginRight: 16,
-  },
-  weekIndicator: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  featuredWeekIndicator: {
-    backgroundColor: '#667EEA',
-  },
-  weekNumber: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#374151',
-  },
-  featuredWeekNumber: {
-    color: '#FFFFFF',
-  },
-  listCardCenter: {
-    flex: 1,
-  },
-  listDateRange: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#374151',
-    marginBottom: 4,
-  },
-  listSummary: {
-    fontSize: 13,
-    color: '#6B7280',
-    lineHeight: 18,
-    marginBottom: 8,
-  },
-  listGoals: {
-    fontSize: 13,
-    color: '#9CA3AF',
-    marginBottom: 8,
-    fontStyle: 'italic',
-  },
-  listMetrics: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  listMetricItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 6,
+    flex: 1,
+    justifyContent: 'flex-end',
   },
-  listMetricText: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  listCardRight: {
-    alignItems: 'center',
-    marginLeft: 16,
-  },
-  listQualityBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  tag: {
+    backgroundColor: '#F2F2F7',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    backgroundColor: '#FFFBEB',
-    borderRadius: 12,
-    gap: 4,
+    borderRadius: 8,
   },
-  listQualityText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#F59E0B',
+  tagDark: {
+    backgroundColor: '#2C2C2E',
+  },
+  tagText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#3C3C43',
+  },
+  tagTextDark: {
+    color: '#EBEBF5',
   },
 
   // Empty State
-  emptyState: {
+  emptyCard: {
+    marginHorizontal: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 40,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 80,
-    paddingHorizontal: 40,
+    borderWidth: 0.5,
+    borderColor: '#E5E5EA',
+    gap: 12,
+  },
+  emptyCardDark: {
+    backgroundColor: '#1C1C1E',
+    borderColor: '#38383A',
   },
   emptyTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#374151',
-    marginTop: 16,
-    marginBottom: 8,
+    fontWeight: '600',
+    color: '#000000',
+    letterSpacing: -0.3,
   },
-  emptySubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
+  emptyTitleDark: {
+    color: '#FFFFFF',
+  },
+  emptyText: {
+    fontSize: 15,
+    color: '#8E8E93',
     textAlign: 'center',
-    lineHeight: 20,
+    fontWeight: '400',
+    lineHeight: 21,
+  },
+  emptyTextDark: {
+    color: '#8E8E93',
+  },
+  startButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  startButtonDark: {
+    backgroundColor: '#0A84FF',
+  },
+  startButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 
   // Loading State
@@ -764,9 +543,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 16,
   },
   loadingText: {
-    fontSize: 16,
-    color: '#64748B',
+    fontSize: 17,
+    color: '#8E8E93',
+    fontWeight: '500',
+  },
+  loadingTextDark: {
+    color: '#8E8E93',
   },
 });
