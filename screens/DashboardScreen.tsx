@@ -28,9 +28,10 @@ import { useTheme } from '../contexts/ThemeContext';
 
 // Import custom components
 import QuickStatsCards from '../components/QuickStatsCards';
-import AdviceCards from '../components/AdviceCards';
-import WeeklyTrendsCards from '../components/WeeklyTrendsCards';
-import HighlightsSection from '../components/HighlightsSection';
+import MoodvsEnergy from '../components/MoodvsEnergy';
+import Achievements from '../components/Achievements';
+import Emotions from '../components/Emotions';
+import Gratitude from '../components/Gratitude';
 import LatestLogs from '../components/LatestLogs';
 
 const { width, height } = Dimensions.get('window');
@@ -75,27 +76,12 @@ export default function DashboardScreen() {
   
   const [currentMood, setCurrentMood] = useState(7.5);
   const [currentEnergy, setCurrentEnergy] = useState(6.8);
-  const [weekMoodData, setWeekMoodData] = useState<
-    { day: string; value: number; date: Date }[]
-  >([]);
-  const [adviceCards, setAdviceCards] = useState<{
-    id: string;
-    title: string;
-    content: string;
-    icon: string;
-  }[]>([]);
-  const [weeklyReflections, setWeeklyReflections] = useState<{
-    week_start_date: string;
-    mood_score: number;
-    energy_level: number;
-    reflection_quality: number;
-    sentiment: 'positive' | 'neutral' | 'negative';
-  }[]>([]);
   const [recentLogs, setRecentLogs] = useState<any[]>([]);
-  const [weeklyComparison, setWeeklyComparison] = useState({
-    moodChange: 0,
-    energyChange: 0,
-  });
+  const [moodEnergyData, setMoodEnergyData] = useState<{
+    date: Date;
+    mood: number;
+    energy: number;
+  }[]>([]);
 
   const scrollY = useSharedValue(0);
 
@@ -118,91 +104,24 @@ export default function DashboardScreen() {
         setCurrentEnergy(latestLog.energy_level ?? 6.8);
       }
 
-      // Fetch weekly advice cards
-      const { data: weeklyCards } = await supabase
-        .from('weekly_cards')
-        .select('*')
-        .eq('user_id', userId)
-        .order('week_start_date', { ascending: false })
-        .limit(1)
-        .single();
 
-      if (weeklyCards) {
-        const cards = [];
-        if (weeklyCards.advice1_title && weeklyCards.advice1_content) {
-          cards.push({
-            id: '1',
-            title: weeklyCards.advice1_title,
-            content: weeklyCards.advice1_content,
-            icon: 'leaf-outline',
-          });
-        }
-        if (weeklyCards.advice2_title && weeklyCards.advice2_content) {
-          cards.push({
-            id: '2',
-            title: weeklyCards.advice2_title,
-            content: weeklyCards.advice2_content,
-            icon: 'walk-outline',
-          });
-        }
-        if (weeklyCards.advice3_title && weeklyCards.advice3_content) {
-          cards.push({
-            id: '3',
-            title: weeklyCards.advice3_title,
-            content: weeklyCards.advice3_content,
-            icon: 'bed-outline',
-          });
-        }
-        setAdviceCards(cards);
-      } else {
-        setAdviceCards([]);
-      }
 
-      // Fetch weekly reflections for trends
-      const { data: reflections } = await supabase
-        .from('weekly_reflections')
-        .select('week_start_date, mood_score, energy_level, reflection_quality, sentiment')
-        .eq('user_id', userId)
-        .order('week_start_date', { ascending: false })
-        .limit(10); // Get last 10 weeks for trends
-
-      if (reflections) {
-        setWeeklyReflections(reflections);
-      }
-
-      // Fetch mood data for the week
+      // Fetch mood data for MoodvsEnergy chart
       const { data: dailyLogs } = await supabase
         .from('daily_logs')
         .select('*')
         .eq('user_id', userId)
         .order('log_date', { ascending: false })
-        .limit(14); // Get 2 weeks for comparison
+        .limit(30); // Get 30 days for the chart
 
       if (dailyLogs && dailyLogs.length > 0) {
-        const thisWeek = dailyLogs.slice(0, 7);
-        const lastWeek = dailyLogs.slice(7, 14);
-        
-        const moodData = thisWeek.map((log) => ({
-          day: new Date(log.log_date).toLocaleDateString('en-US', { weekday: 'short' }),
-          value: log.mood_score ?? 0,
+        // Prepare data for MoodvsEnergy component
+        const chartData = dailyLogs.map(log => ({
           date: new Date(log.log_date),
-        })).reverse();
-        
-        setWeekMoodData(moodData);
-
-        // Calculate weekly comparison
-        const thisWeekAvgMood = thisWeek.reduce((acc, log) => acc + (log.mood_score ?? 0), 0) / (thisWeek.length || 1);
-        const lastWeekAvgMood = lastWeek.reduce((acc, log) => acc + (log.mood_score ?? 0), 0) / (lastWeek.length || 1);
-        const thisWeekAvgEnergy = thisWeek.reduce((acc, log) => acc + (log.energy_level ?? 0), 0) / (thisWeek.length || 1);
-        const lastWeekAvgEnergy = lastWeek.reduce((acc, log) => acc + (log.energy_level ?? 0), 0) / (lastWeek.length || 1);
-
-        setWeeklyComparison({
-          moodChange: thisWeekAvgMood - lastWeekAvgMood,
-          energyChange: thisWeekAvgEnergy - lastWeekAvgEnergy,
-        });
-      } else {
-        setWeekMoodData([]);
-        setWeeklyComparison({ moodChange: 0, energyChange: 0 });
+          mood: log.mood_score ?? 0,
+          energy: log.energy_level ?? 0,
+        })).sort((a, b) => a.date.getTime() - b.date.getTime());
+        setMoodEnergyData(chartData);
       }
 
       // Fetch recent logs
@@ -290,29 +209,31 @@ export default function DashboardScreen() {
             />
           </Animated.View>
 
-          {/* Advice */}
-          <Animated.View entering={FadeInUp.delay(400).duration(600)}>
-            <AdviceCards cards={adviceCards} isDark={isDark} />
-          </Animated.View>
-
-          {/* Weekly Trends - NEW SECTION */}
-          {weeklyReflections.length > 0 && (
-            <Animated.View entering={FadeInUp.delay(500).duration(600)}>
-              <WeeklyTrendsCards reflections={weeklyReflections} isDark={isDark} />
-            </Animated.View>
-          )}
-
-          {/* Highlights */}
-          <Animated.View entering={FadeInUp.delay(600).duration(600)}>
-            <HighlightsSection 
-              moodData={weekMoodData}
-              weeklyComparison={weeklyComparison}
+          {/* Mood vs Energy Chart */}
+          <Animated.View entering={FadeInUp.delay(300).duration(600)}>
+            <MoodvsEnergy 
+              data={moodEnergyData}
               isDark={isDark}
             />
           </Animated.View>
 
+          {/* Achievements */}
+          <Animated.View style={styles.sectionSpacing} entering={FadeInUp.delay(500).duration(600)}>
+            <Achievements isDark={isDark} />
+          </Animated.View>
+
+          {/* Emotions */}
+          <Animated.View style={styles.sectionSpacing} entering={FadeInUp.delay(600).duration(600)}>
+            <Emotions isDark={isDark} />
+          </Animated.View>
+
+          {/* Gratitude */}
+          <Animated.View style={styles.sectionSpacing} entering={FadeInUp.delay(700).duration(600)}>
+            <Gratitude isDark={isDark} />
+          </Animated.View>
+
           {/* Latest Logs */}
-          <Animated.View entering={FadeInUp.delay(800).duration(600)}>
+          <Animated.View style={styles.sectionSpacing} entering={FadeInUp.delay(800).duration(600)}>
             <LatestLogs logs={recentLogs} isDark={isDark} />
           </Animated.View>
 
@@ -391,6 +312,9 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 20,
+  },
+  sectionSpacing: {
+    marginTop: 32,
   },
   floatingButton: {
     position: 'absolute',

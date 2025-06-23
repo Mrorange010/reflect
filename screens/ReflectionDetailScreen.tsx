@@ -6,6 +6,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle } from 'react-native-svg';
 import { supabase } from '../utils/supabase';
 
+// Import dashboard components
+import QuickStatsCards from '../components/QuickStatsCards';
+import MoodvsEnergy from '../components/MoodvsEnergy';
+import Emotions from '../components/Emotions';
+import Gratitude from '../components/Gratitude';
+
 const { width } = Dimensions.get('window');
 
 interface Reflection {
@@ -49,7 +55,7 @@ interface DailyLog {
   updated_at: string;
 }
 
-type TabType = 'overview' | 'daily' | 'details' | 'coaching';
+type TabType = 'data' | 'details' | 'summary' | 'advice' | 'coaching';
 
 export default function ReflectionDetailScreen({ 
   route, 
@@ -61,7 +67,7 @@ export default function ReflectionDetailScreen({
   const { reflection } = route.params;
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [activeTab, setActiveTab] = useState<TabType>('data');
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -319,18 +325,20 @@ export default function ReflectionDetailScreen({
 
   // Tab icon and title mapping
   const tabMeta = {
-    overview: { icon: 'analytics-outline', title: 'Overview' },
-    daily: { icon: 'calendar-outline', title: 'Daily' },
+    data: { icon: 'analytics-outline', title: 'Data' },
     details: { icon: 'document-text-outline', title: 'Details' },
+    summary: { icon: 'book-outline', title: 'Summary' },
+    advice: { icon: 'chatbubble-ellipses-outline', title: "Ava's Advice" },
     coaching: { icon: 'bulb-outline', title: 'Coaching Insights' },
   };
 
   // Update the tabs array to only have icon and key
   const tabs = [
-    { key: 'overview', icon: 'analytics-outline' },
-    { key: 'daily', icon: 'calendar-outline' },
+    { key: 'data', icon: 'analytics-outline' },
     { key: 'details', icon: 'document-text-outline' },
-    ...(coachingPrompts.length > 0 ? [{ key: 'coaching', icon: 'bulb-outline' }] : [])
+    { key: 'advice', icon: 'chatbubble-ellipses-outline' },
+    ...(coachingPrompts.length > 0 ? [{ key: 'coaching', icon: 'bulb-outline' }] : []),
+    { key: 'summary', icon: 'book-outline' }
   ];
 
   // Tab header for each tab content
@@ -347,184 +355,382 @@ export default function ReflectionDetailScreen({
   );
 
   // Add TabHeader to each tab content
-  const renderOverviewTab = () => (
+  const renderDataTab = () => (
     <ScrollView contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
-      <TabHeader tabKey="overview" />
-      {/* Quick Stats - Dashboard Style */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionHeader, isDark && styles.sectionHeaderDark]}>Weekly Overview</Text>
-        <DashboardQuickStats 
-          moodScore={reflection.mood_score || 0} 
-          energyLevel={reflection.energy_level || 0}
-          isDark={isDark}
-        />
+      <TabHeader tabKey="data" />
+      
+      {/* Quick Stats */}
+      <QuickStatsCards 
+        moodScore={reflection.mood_score || 0} 
+        energyLevel={reflection.energy_level || 0}
+        isDark={isDark}
+      />
+
+      {/* Mood vs Energy Chart */}
+      <MoodvsEnergy 
+        data={moodData.map(d => ({
+          date: new Date(),
+          mood: d.score,
+          energy: reflection.energy_level || 0
+        }))}
+        isDark={isDark}
+      />
+
+      {/* Emotions */}
+      <View style={styles.sectionSpacing}>
+        <Emotions isDark={isDark} />
       </View>
-      {/* Mood Chart Section */}
-      <View style={styles.section}>
-        <EnhancedMoodChart />
+
+      {/* Gratitude */}
+      <View style={styles.sectionSpacing}>
+        <Gratitude isDark={isDark} />
       </View>
-      {/* Summary Section */}
-      {reflection.summary && (
+    </ScrollView>
+  );
+
+  const renderSummaryTab = () => {
+    // Generate a narrative summary of the week incorporating all data points
+    const generateWeeklySummary = (): string => {
+      const moodScore = reflection.mood_score || 0;
+      const energyLevel = reflection.energy_level || 0;
+      
+      // Create a narrative based on the data
+      let story = `This week was `;
+      
+      // Start with overall tone based on mood and energy
+      if (moodScore >= 7 && energyLevel >= 7) {
+        story += `a vibrant and fulfilling chapter in your journey. `;
+      } else if (moodScore >= 6 || energyLevel >= 6) {
+        story += `a balanced week with both bright moments and learning opportunities. `;
+      } else if (moodScore >= 4 || energyLevel >= 4) {
+        story += `a week of mixed experiences, offering valuable insights about yourself. `;
+      } else {
+        story += `a challenging but important week that required strength and resilience. `;
+      }
+
+      // Add mood details
+      if (moodScore >= 8) {
+        story += `Your emotional landscape was particularly bright, with a mood rating of ${moodScore}/10 reflecting genuine contentment and joy. `;
+      } else if (moodScore >= 6) {
+        story += `You maintained a steady emotional baseline with a mood score of ${moodScore}/10, showing your ability to navigate life's natural rhythms. `;
+      } else if (moodScore >= 4) {
+        story += `Your mood of ${moodScore}/10 tells a story of someone working through life's complexities with honesty and courage. `;
+      } else if (moodScore > 0) {
+        story += `With a mood rating of ${moodScore}/10, this week asked a lot of you emotionally, yet you showed up and persevered. `;
+      }
+
+      // Add energy details  
+      if (energyLevel >= 8) {
+        story += `Your energy levels soared at ${energyLevel}/10, fueling your days with vitality and enthusiasm for life's adventures. `;
+      } else if (energyLevel >= 6) {
+        story += `You maintained good energy at ${energyLevel}/10, providing a solid foundation for your daily activities and goals. `;
+      } else if (energyLevel >= 4) {
+        story += `Your energy level of ${energyLevel}/10 reflected the natural ebb and flow of life, reminding you to honor your body's needs. `;
+      } else if (energyLevel > 0) {
+        story += `With energy at ${energyLevel}/10, your body was asking for extra care and attention this week. `;
+      }
+
+      // Add achievements if present
+      if (reflection.achievements) {
+        const achievements = formatBulletPoints(reflection.achievements);
+        if (achievements.length > 1) {
+          story += `You celebrated multiple victories this week, each one a testament to your dedication and growth. `;
+        } else {
+          story += `A meaningful achievement marked this week: ${achievements[0]}. This success reflects your commitment to personal growth. `;
+        }
+      }
+
+      // Add challenges if present
+      if (reflection.challenges) {
+        const challenges = formatBulletPoints(reflection.challenges);
+        if (challenges.length > 1) {
+          story += `While you faced several challenges, each one became an opportunity to discover your inner strength and resilience. `;
+        } else {
+          story += `You encountered a significant challenge that tested your resolve and ultimately contributed to your personal development. `;
+        }
+      }
+
+      // Add notable events if present
+      if (reflection.notable_events) {
+        const events = formatBulletPoints(reflection.notable_events);
+        if (events.length > 1) {
+          story += `Several notable events shaped your week, each adding its own color to your life's tapestry. `;
+        } else {
+          story += `A significant event left its mark on your week, creating new memories and perspectives. `;
+        }
+      }
+
+      // Add gratitude element
+      story += `Throughout it all, you took moments to practice gratitude, recognizing the gifts and connections that enrich your daily experience. `;
+
+      // Conclude with reflection
+      story += `As this week closes, you can look back with appreciation for both the joys celebrated and the lessons learned. Each experience has contributed to your ongoing story of growth, resilience, and self-discovery.`;
+
+      return story;
+    };
+
+    return (
+      <ScrollView contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
+        <TabHeader tabKey="summary" />
+        
+        {/* Weekly Summary Card */}
         <View style={styles.section}>
-          <Text style={[styles.sectionHeader, isDark && styles.sectionHeaderDark]}>Weekly Summary</Text>
           <View style={[styles.summaryCard, isDark && styles.summaryCardDark]}>
-            <Text style={[styles.summaryText, isDark && styles.summaryTextDark]}>{reflection.summary}</Text>
+            <View style={styles.summaryHeader}>
+              <Ionicons 
+                name="book-outline" 
+                size={24} 
+                color={isDark ? '#FF6B4D' : '#FF7A59'} 
+              />
+              <Text style={[styles.summaryTitle, isDark && styles.summaryTitleDark]}>
+                Your Week in Story
+              </Text>
+            </View>
+            <Text style={[styles.summaryText, isDark && styles.summaryTextDark]}>
+              {generateWeeklySummary()}
+            </Text>
           </View>
         </View>
-      )}
-      {/* Goals Section */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionHeader, isDark && styles.sectionHeaderDark]}>Goals & Objectives</Text>
-        <View style={[styles.contentCard, isDark && styles.contentCardDark]}>
-          {formatBulletPoints(reflection.weekly_goals).length > 0 ? (
-            <View style={styles.bulletList}>
-              {formatBulletPoints(reflection.weekly_goals).map((goal, idx) => (
-                <View key={idx} style={styles.bulletItem}>
-                  <View style={[styles.bulletDot, { backgroundColor: isDark ? '#FF6B4D' : '#FF7A59' }]} />
-                  <Text style={[styles.bulletText, isDark && styles.bulletTextDark]}>{goal}</Text>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={[styles.emptyText, isDark && styles.emptyTextDark]}>No goals recorded for this week</Text>
-          )}
-        </View>
-      </View>
-      {/* Achievements Section */}
-      {reflection.achievements && (
+      </ScrollView>
+    );
+  };
+
+  const renderAdviceTab = () => {
+    // Mock advice data - in real app would come from AI analysis
+    const adviceMessages = [
+      {
+        id: '1',
+        message: 'Based on your mood patterns this week, I noticed you had particularly high energy on Tuesday and Wednesday. What activities or routines during those days contributed to feeling so energized? Identifying these patterns can help you replicate them.',
+        timestamp: '2 hours ago'
+      },
+      {
+        id: '2', 
+        message: 'Your gratitude practice shows a beautiful focus on relationships and personal moments. Research suggests that gratitude focused on people and experiences (rather than material things) has the strongest impact on wellbeing. Keep nurturing those meaningful connections!',
+        timestamp: '1 day ago'
+      },
+      {
+        id: '3',
+        message: 'I see you faced some challenges this week, but your resilience really shows through in how you processed and reflected on them. Consider creating a "challenge toolkit" - a list of strategies that have worked for you in the past that you can reference during difficult times.',
+        timestamp: '2 days ago'
+      },
+      {
+        id: '4',
+        message: 'Your achievement this week demonstrates real progress toward your goals. Success often builds momentum - how can you use this win to tackle the next challenge or milestone? Sometimes celebrating our wins properly is just as important as the achievement itself.',
+        timestamp: '3 days ago'
+      }
+    ];
+
+    return (
+      <ScrollView contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
+        <TabHeader tabKey="advice" />
+        
+        {/* Advice Messages */}
         <View style={styles.section}>
-          <Text style={[styles.sectionHeader, isDark && styles.sectionHeaderDark]}>Key Achievements</Text>
-          <View style={[styles.contentCard, isDark && styles.contentCardDark]}>
-            {formatBulletPoints(reflection.achievements).length > 1 ? (
-              <View style={styles.bulletList}>
-                {formatBulletPoints(reflection.achievements).map((achievement, idx) => (
-                  <View key={idx} style={styles.bulletItem}>
-                    <View style={[styles.bulletDot, { backgroundColor: isDark ? '#10B981' : '#059669' }]} />
-                    <Text style={[styles.bulletText, isDark && styles.bulletTextDark]}>{achievement}</Text>
+          <View style={styles.adviceMessagesContainer}>
+            {adviceMessages.map((advice, index) => (
+              <View key={advice.id} style={styles.adviceMessageWrapper}>
+                {/* Avatar */}
+                <View style={styles.avatarContainer}>
+                  <View style={[styles.avatar, isDark && styles.avatarDark]}>
+                    <Text style={styles.avatarText}>A</Text>
                   </View>
-                ))}
-              </View>
-            ) : (
-              <Text style={[styles.contentText, isDark && styles.contentTextDark]}>{reflection.achievements}</Text>
-            )}
-          </View>
-        </View>
-      )}
-      {/* Emotional State Section */}
-      {emotionalTags.length > 0 && (
-        <View style={styles.section}>
-          <Text style={[styles.sectionHeader, isDark && styles.sectionHeaderDark]}>Emotional State</Text>
-          <View style={[styles.contentCard, isDark && styles.contentCardDark]}>
-            <View style={styles.emotionalTagsContainer}>
-              {emotionalTags.map((tag, index) => (
-                <View key={index} style={[styles.modernEmotionalTag, isDark && styles.modernEmotionalTagDark]}> 
-                  <Text style={[styles.modernTagText, isDark && styles.modernTagTextDark]}>{tag}</Text>
                 </View>
-              ))}
-            </View>
-            {reflection.sentiment && (
-              <View style={[styles.sentimentSection, isDark && styles.sentimentSectionDark]}>
-                <View style={styles.sentimentHeader}>
-                  <Ionicons 
-                    name="analytics-outline" 
-                    size={16} 
-                    color={isDark ? '#8E8E93' : '#8E8E93'} 
-                  />
-                  <Text style={[styles.sentimentLabel, isDark && styles.sentimentLabelDark]}>
-                    Overall Sentiment
+                
+                {/* Message Bubble */}
+                <View style={styles.messageBubbleContainer}>
+                  <View style={[styles.messageBubble, isDark && styles.messageBubbleDark]}>
+                    <Text style={[styles.messageText, isDark && styles.messageTextDark]}>
+                      {advice.message}
+                    </Text>
+                  </View>
+                  <Text style={[styles.messageTimestamp, isDark && styles.messageTimestampDark]}>
+                    {advice.timestamp}
                   </Text>
                 </View>
-                <View style={[styles.modernSentimentBadge, { backgroundColor: getSentimentColor(reflection.sentiment, isDark) }]}> 
-                  <Text style={styles.modernSentimentValue}>
-                    {reflection.sentiment?.charAt(0).toUpperCase() + reflection.sentiment?.slice(1)}
-                  </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      </ScrollView>
+    );
+  };
+
+  const renderDetailsTab = () => {
+    // Helper to get summary text for each category
+    const getMoodSummary = (): string => {
+      const score = reflection.mood_score || 0;
+      if (score >= 8) {
+        return 'You experienced excellent mood levels this week, consistently feeling positive and emotionally balanced. This suggests your current strategies and lifestyle choices are working well for your mental wellbeing. Consider noting what specific factors contributed to this positive state. Maintaining these patterns could help sustain your emotional health moving forward.';
+      }
+      if (score >= 6) {
+        return 'Your mood was generally good this week with mostly positive emotional experiences. While there may have been some minor fluctuations, you maintained a stable emotional baseline. This indicates resilience and effective coping mechanisms. Identifying what supported your mood stability can help you replicate these conditions.';
+      }
+      if (score >= 4) {
+        return 'You experienced moderate mood levels this week with a mix of positive and challenging emotional states. This is completely normal and shows you\'re navigating life\'s ups and downs. Consider what factors influenced your mood variations. Small adjustments to daily routines or stress management might help improve overall emotional wellbeing.';
+      }
+      return 'Your mood was lower than usual this week, which may indicate you\'re facing some challenges or stressors. This is a valuable signal from your emotional system that deserves attention and care. Consider reaching out for support, practicing self-compassion, and identifying specific factors that might be impacting your wellbeing. Remember that difficult periods often lead to growth and resilience.';
+    };
+
+    const getEnergySummary = (): string => {
+      const energy = reflection.energy_level || 0;
+      if (energy >= 8) {
+        return 'You maintained high energy levels throughout the week, feeling vibrant and capable of tackling your daily activities with enthusiasm. This suggests your sleep, nutrition, and activity levels are well-balanced. Your body and mind are functioning optimally, allowing you to engage fully with life. Consider documenting what contributed to this energetic state for future reference.';
+      }
+      if (energy >= 6) {
+        return 'Your energy levels were generally good this week, providing you with adequate fuel for most activities and responsibilities. While you may have experienced some natural fluctuations, you maintained a solid foundation of vitality. This indicates your basic health habits are supporting your energy needs. Small optimizations to sleep or nutrition might boost you even higher.';
+      }
+      if (energy >= 4) {
+        return 'You experienced moderate energy levels this week, with some days feeling more energized than others. This variability is normal and often reflects the natural rhythms of life and work demands. Pay attention to patterns around sleep, stress, and activity that might influence your energy. Simple adjustments to your routine could help stabilize and improve your overall vitality.';
+      }
+      return 'Your energy levels were lower than usual this week, which may be signaling a need for rest, recovery, or lifestyle adjustments. Low energy can result from various factors including stress, poor sleep, or overcommitment. This is your body\'s way of asking for attention and care. Consider prioritizing rest, evaluating your workload, and focusing on fundamental wellness practices like sleep hygiene and nutrition.';
+    };
+
+    const getGratitudeSummary = (): string => {
+      return 'You actively practiced gratitude this week, taking time to acknowledge and appreciate the positive aspects of your life. This practice has been shown to improve mental wellbeing, enhance relationships, and increase life satisfaction. Your gratitude entries reflect a mindful awareness of life\'s gifts, both big and small. Continuing this practice can help maintain perspective during challenging times and amplify joy during good ones.';
+    };
+
+    const getEventsSummary = (): string => {
+      if (!reflection.notable_events) {
+        return 'No notable events were recorded this week, suggesting a period of routine and stability in your life. Sometimes quiet weeks are exactly what we need for rest and reflection. This steady rhythm can provide a foundation for processing past experiences and preparing for future growth. Consider whether this calm period felt restorative or if you might benefit from introducing some variety or excitement into your routine.';
+      }
+      const events = formatBulletPoints(reflection.notable_events);
+      if (events.length > 1) {
+        return `You experienced ${events.length} notable events this week, indicating an active and varied period in your life. These experiences likely provided opportunities for growth, connection, or new perspectives. Diverse experiences can enrich our understanding of ourselves and the world around us. Reflect on how these events impacted your mood, energy, and overall wellbeing to identify patterns and preferences.`;
+      }
+      const event = events[0] || '';
+      return `A significant event shaped your week: ${event}. This experience likely had an impact on your thoughts, emotions, and perspective. Notable events, whether positive or challenging, often serve as catalysts for personal growth and self-discovery. Consider how this experience has influenced your understanding of yourself and what you might learn from it moving forward.`;
+    };
+
+    const getAchievementsSummary = (): string => {
+      if (!reflection.achievements) {
+        return 'No specific achievements were recorded this week, but remember that progress isn\'t always measured in major milestones. Sometimes the most important achievements are the small, consistent actions that build toward larger goals. Consider celebrating the everyday victories like maintaining routines, showing up for yourself, or simply getting through challenging days. These foundational achievements often matter most for long-term success and wellbeing.';
+      }
+      const achievements = formatBulletPoints(reflection.achievements);
+      if (achievements.length > 1) {
+        return `You accomplished ${achievements.length} notable achievements this week, demonstrating your capability and commitment to personal growth. These successes reflect your effort, persistence, and skill development across different areas of your life. Take time to acknowledge and celebrate these wins, as they build momentum and confidence for future challenges. Consider what strategies or mindsets contributed to these achievements.`;
+      }
+      const achievement = achievements[0] || '';
+      return `You accomplished something meaningful this week: ${achievement}. This achievement represents your dedication, effort, and growth in an area that matters to you. Success builds upon itself, and this accomplishment likely required skills, persistence, or courage that you can apply to future challenges. Take a moment to appreciate not just the outcome, but the process and personal qualities that made it possible.`;
+    };
+
+    const getChallengesSummary = (): string => {
+      if (!reflection.challenges) {
+        return 'No significant challenges were recorded this week, suggesting a period of relative ease and stability in your life. This can be a valuable time for rest, planning, and building resilience for future obstacles. Sometimes the absence of major challenges allows us to focus on growth, relationships, and pursuing our goals with less stress. Consider using this stable period to strengthen your foundation and prepare for whatever lies ahead.';
+      }
+      const challenges = formatBulletPoints(reflection.challenges);
+      if (challenges.length > 1) {
+        return `You faced ${challenges.length} notable challenges this week, which required resilience, problem-solving, and emotional strength. While difficult, challenges often serve as catalysts for growth and help us develop new skills and perspectives. Your ability to identify and acknowledge these obstacles shows self-awareness and courage. Reflect on how you navigated these difficulties and what strengths or resources helped you through them.`;
+      }
+      const challenge = challenges[0] || '';
+      return `You encountered a significant challenge this week: ${challenge}. Facing difficulties is an inevitable part of life, and your awareness of this challenge shows emotional intelligence and honesty. Challenges often reveal our inner strength and capacity for growth, even when they feel overwhelming in the moment. Consider what this experience taught you about yourself and how you might apply these insights to similar situations in the future.`;
+    };
+
+    // Data points configuration
+    const dataPoints = [
+      {
+        title: 'Mood',
+        summary: getMoodSummary(),
+        value: reflection.mood_score ? `${reflection.mood_score}/10` : 'Not recorded',
+        icon: 'happy-outline',
+        color: '#007AFF',
+        hasData: !!reflection.mood_score
+      },
+      {
+        title: 'Energy',
+        summary: getEnergySummary(),
+        value: reflection.energy_level ? `${reflection.energy_level}/10` : 'Not recorded',
+        icon: 'flash-outline',
+        color: '#30D158',
+        hasData: !!reflection.energy_level
+      },
+      {
+        title: 'Gratitude',
+        summary: getGratitudeSummary(),
+        value: '3 entries',
+        icon: 'heart-outline',
+        color: '#FF2D92',
+        hasData: true // Mock data
+      },
+      {
+        title: 'Events',
+        summary: getEventsSummary(),
+        value: reflection.notable_events ? 'Recorded' : 'None',
+        icon: 'calendar-outline',
+        color: '#FF9F0A',
+        hasData: !!reflection.notable_events
+      },
+      {
+        title: 'Achievements',
+        summary: getAchievementsSummary(),
+        value: reflection.achievements ? 'Recorded' : 'None',
+        icon: 'trophy-outline',
+        color: '#FF9F0A',
+        hasData: !!reflection.achievements
+      },
+      {
+        title: 'Challenges',
+        summary: getChallengesSummary(),
+        value: reflection.challenges ? 'Recorded' : 'None',
+        icon: 'alert-circle-outline',
+        color: '#FF453A',
+        hasData: !!reflection.challenges
+      }
+    ];
+
+    return (
+      <ScrollView contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
+        <TabHeader tabKey="details" />
+        
+        {/* Data Point Summary Cards */}
+        <View style={styles.section}>
+          <View style={styles.detailsCardsContainer}>
+            {dataPoints.map((item, index) => (
+              <View key={item.title} style={[styles.detailsCard, isDark && styles.detailsCardDark]}>
+                <View style={styles.detailsCardContent}>
+                  {/* Icon */}
+                  <View style={[styles.detailsIconContainer, { backgroundColor: `${item.color}15` }]}>
+                    <Ionicons 
+                      name={item.icon as any} 
+                      size={24} 
+                      color={item.color} 
+                    />
+                  </View>
+                  
+                  {/* Content */}
+                  <View style={styles.detailsTextContainer}>
+                    <View style={styles.detailsHeader}>
+                      <Text style={[styles.detailsTitle, isDark && styles.detailsTitleDark]}>
+                        {item.title}
+                      </Text>
+                      <Text style={[styles.detailsValue, { color: item.color }]}>
+                        {item.value}
+                      </Text>
+                    </View>
+                    <Text style={[styles.detailsSummary, isDark && styles.detailsSummaryDark]}>
+                      {item.summary}
+                    </Text>
+                  </View>
                 </View>
               </View>
-            )}
+            ))}
           </View>
         </View>
-      )}
-    </ScrollView>
-  );
 
-  const renderDailyTab = () => (
-    <ScrollView contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
-      <TabHeader tabKey="daily" />
-      {/* Daily Mood Chart */}
-      <View style={styles.moodChartDailySection}>
-        <EnhancedMoodChart />
-      </View>
-      {/* Daily Logs */}
-      {renderDailyLogs()}
-    </ScrollView>
-  );
-
-  const renderDetailsTab = () => (
-    <ScrollView contentContainerStyle={styles.tabContent} showsVerticalScrollIndicator={false}>
-      <TabHeader tabKey="details" />
-      {/* Challenges Section */}
-      {reflection.challenges && (
-        <View style={styles.section}>
-          <Text style={[styles.sectionHeader, isDark && styles.sectionHeaderDark]}>Challenges Faced</Text>
-          <View style={[styles.contentCard, isDark && styles.contentCardDark]}>
-            {formatBulletPoints(reflection.challenges).length > 1 ? (
-              <View style={styles.bulletList}>
-                {formatBulletPoints(reflection.challenges).map((challenge, idx) => (
-                  <View key={idx} style={styles.bulletItem}>
-                    <View style={[styles.bulletDot, { backgroundColor: isDark ? '#EF4444' : '#DC2626' }]} />
-                    <Text style={[styles.bulletText, isDark && styles.bulletTextDark]}>{challenge}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <Text style={[styles.contentText, isDark && styles.contentTextDark]}>{reflection.challenges}</Text>
-            )}
-          </View>
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={[styles.footerText, isDark && styles.footerTextDark]}>
+            Last updated: {new Date(reflection.updated_at).toLocaleDateString(undefined, {
+              weekday: 'short',
+              month: 'short', 
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
+          </Text>
         </View>
-      )}
-      {/* Weekend Plans Section */}
-      {reflection.weekend_plans && (
-        <View style={styles.section}>
-          <Text style={[styles.sectionHeader, isDark && styles.sectionHeaderDark]}>Weekend Plans</Text>
-          <View style={[styles.contentCard, isDark && styles.contentCardDark]}>
-            <Text style={[styles.contentText, isDark && styles.contentTextDark]}>{reflection.weekend_plans}</Text>
-          </View>
-        </View>
-      )}
-      {/* Notable Events Section */}
-      {reflection.notable_events && (
-        <View style={styles.section}>
-          <Text style={[styles.sectionHeader, isDark && styles.sectionHeaderDark]}>Notable Events</Text>
-          <View style={[styles.contentCard, isDark && styles.contentCardDark]}>
-            {formatBulletPoints(reflection.notable_events).length > 1 ? (
-              <View style={styles.bulletList}>
-                {formatBulletPoints(reflection.notable_events).map((event, idx) => (
-                  <View key={idx} style={styles.bulletItem}>
-                    <View style={[styles.bulletDot, { backgroundColor: isDark ? '#FF6B4D' : '#FF7A59' }]} />
-                    <Text style={[styles.bulletText, isDark && styles.bulletTextDark]}>{event}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : (
-              <Text style={[styles.contentText, isDark && styles.contentTextDark]}>{reflection.notable_events}</Text>
-            )}
-          </View>
-        </View>
-      )}
-      {/* Footer */}
-      <View style={styles.footer}>
-        <Text style={[styles.footerText, isDark && styles.footerTextDark]}>
-          Last updated: {new Date(reflection.updated_at).toLocaleDateString(undefined, {
-            weekday: 'short',
-            month: 'short', 
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          })}
-        </Text>
-      </View>
-    </ScrollView>
-  );
+      </ScrollView>
+    );
+  };
 
   const renderCoachingTab = () => {
     // Mock advice cards data (in real app, fetch from weekly_cards table)
@@ -672,11 +878,12 @@ export default function ReflectionDetailScreen({
         </View>
       </View>
 
-      {/* Tab Content */}
-      {activeTab === 'overview' && renderOverviewTab()}
-      {activeTab === 'daily' && renderDailyTab()}
-      {activeTab === 'details' && renderDetailsTab()}
-      {activeTab === 'coaching' && renderCoachingTab()}
+              {/* Tab Content */}
+        {activeTab === 'data' && renderDataTab()}
+        {activeTab === 'details' && renderDetailsTab()}
+        {activeTab === 'summary' && renderSummaryTab()}
+        {activeTab === 'advice' && renderAdviceTab()}
+        {activeTab === 'coaching' && renderCoachingTab()}
     </View>
   );
 }
@@ -1572,28 +1779,26 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 20,
+    padding: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
     borderWidth: 1,
     borderColor: '#F1F5F9',
-    borderLeftWidth: 4,
-    borderLeftColor: '#FF7A59',
   },
   summaryCardDark: {
     backgroundColor: '#1F2937',
     borderColor: '#374151',
-    borderLeftColor: '#FF6B4D',
   },
   summaryText: {
     fontSize: 16,
-    lineHeight: 24,
+    lineHeight: 26,
     color: '#374151',
-    fontStyle: 'italic',
+    letterSpacing: 0.2,
+    textAlign: 'left',
   },
   summaryTextDark: {
     color: '#D1D5DB',
@@ -1667,14 +1872,6 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
-  },
-  sentimentLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  sentimentLabelDark: {
-    color: '#9CA3AF',
   },
   sentimentBadge: {
     paddingHorizontal: 12,
@@ -1833,5 +2030,165 @@ const styles = StyleSheet.create({
   },
   moodChartDailySection: {
     marginBottom: 32,
+  },
+  sectionSpacing: {
+    marginTop: 32,
+  },
+
+  // Details Tab Styles
+  detailsCardsContainer: {
+    gap: 16,
+  },
+  detailsCard: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  detailsCardDark: {
+    backgroundColor: '#1F2937',
+    borderColor: '#374151',
+  },
+  detailsCardContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  detailsIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  detailsTextContainer: {
+    flex: 1,
+  },
+  detailsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  detailsTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    letterSpacing: 0.3,
+  },
+  detailsTitleDark: {
+    color: '#FFFFFF',
+  },
+  detailsValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  detailsSummary: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#6B7280',
+    letterSpacing: 0.1,
+  },
+  detailsSummaryDark: {
+    color: '#9CA3AF',
+  },
+
+  // Summary Tab Styles  
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    gap: 12,
+  },
+  summaryTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1F2937',
+    letterSpacing: 0.3,
+  },
+  summaryTitleDark: {
+    color: '#FFFFFF',
+  },
+
+  // Advice Tab Styles
+  adviceMessagesContainer: {
+    gap: 24,
+  },
+  adviceMessageWrapper: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  avatarContainer: {
+    marginTop: 4,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FF6B4D',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#FF6B4D',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  avatarDark: {
+    backgroundColor: '#FF7A59',
+    shadowColor: '#FF7A59',
+  },
+  avatarText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  messageBubbleContainer: {
+    flex: 1,
+  },
+  messageBubble: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderTopLeftRadius: 4,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  messageBubbleDark: {
+    backgroundColor: '#374151',
+    borderColor: '#4B5563',
+  },
+  messageText: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#374151',
+    letterSpacing: 0.1,
+  },
+  messageTextDark: {
+    color: '#E5E7EB',
+  },
+  messageTimestamp: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 6,
+    marginLeft: 4,
+  },
+  messageTimestampDark: {
+    color: '#6B7280',
   },
 });

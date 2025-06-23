@@ -5,13 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { 
   FadeInUp, 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withSpring,
-  useAnimatedGestureHandler,
-  runOnJS,
 } from 'react-native-reanimated';
-import { PanGestureHandler } from 'react-native-gesture-handler';
 import { useNavigation } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
@@ -37,42 +31,11 @@ const LogCard: React.FC<{
   isDark: boolean;
   onPress: () => void;
 }> = ({ log, index, isDark, onPress }) => {
-  const scale = useSharedValue(1);
-  const translateX = useSharedValue(0);
-
-  const gestureHandler = useAnimatedGestureHandler({
-    onStart: () => {
-      scale.value = withSpring(0.98);
-    },
-    onActive: (event) => {
-      translateX.value = event.translationX * 0.1;
-    },
-    onEnd: () => {
-      scale.value = withSpring(1);
-      translateX.value = withSpring(0);
-      runOnJS(onPress)();
-    },
-  });
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { scale: scale.value },
-      { translateX: translateX.value },
-    ],
-  }));
-
   const getMoodColor = (score: number) => {
     if (score >= 8) return '#34C759';
     if (score >= 6) return '#007AFF';
     if (score >= 4) return '#FF9500';
     return '#FF3B30';
-  };
-
-  const getMoodEmoji = (score: number) => {
-    if (score >= 8) return '😊';
-    if (score >= 6) return '🙂';
-    if (score >= 4) return '😐';
-    return '😔';
   };
 
   const formatDate = (dateString: string) => {
@@ -87,115 +50,140 @@ const LogCard: React.FC<{
       return 'Yesterday';
     } else {
       return date.toLocaleDateString('en-US', { 
-        weekday: 'short', 
         month: 'short', 
         day: 'numeric' 
       });
     }
   };
 
-  const getQualityIndicator = (quality?: number) => {
-    if (!quality) return null;
-    
-    if (quality >= 8) return { icon: 'star', color: '#34C759' };
-    if (quality >= 6) return { icon: 'star-half', color: '#FF9500' };
-    return { icon: 'star-outline', color: '#8E8E93' };
-  };
-
-  const qualityIndicator = getQualityIndicator(log.reflection_quality);
-
   return (
-    <PanGestureHandler onGestureEvent={gestureHandler}>
-      <Animated.View
-        style={[
-          styles.logCard,
-          isDark && styles.logCardDark,
-          animatedStyle,
-        ]}
-        entering={FadeInUp.delay(index * 100).duration(600)}
+    <Animated.View entering={FadeInUp.delay(index * 100).duration(600)}>
+      <TouchableOpacity
+        style={[styles.logCard, isDark && styles.logCardDark]}
+        onPress={onPress}
+        activeOpacity={0.8}
       >
-        <View style={styles.cardContent}>
-          <View style={styles.cardHeader}>
-            <View style={styles.dateSection}>
-              <Text style={[styles.dateText, isDark && styles.dateTextDark]}>
-                {formatDate(log.log_date)}
+        <View style={styles.cardHeader}>
+          <View style={styles.cardHeaderLeft}>
+            <Text style={[styles.dateLabel, isDark && styles.dateLabelDark]}>
+              {formatDate(log.log_date)}
+            </Text>
+            <Text style={[styles.timeText, isDark && styles.timeTextDark]}>
+              {new Date(log.log_date).toLocaleTimeString('en-US', { 
+                hour: 'numeric', 
+                minute: '2-digit',
+                hour12: true 
+              })}
+            </Text>
+          </View>
+          
+          <View style={styles.cardHeaderRight}>
+            {log.reflection_quality && (
+              <View style={[styles.qualityBadge, isDark && styles.qualityBadgeDark]}>
+                <Ionicons name="star" size={12} color="#FF9500" />
+                <Text style={[styles.qualityText, isDark && styles.qualityTextDark]}>
+                  {log.reflection_quality}
+                </Text>
+              </View>
+            )}
+            <Ionicons 
+              name="chevron-forward" 
+              size={16} 
+              color={isDark ? '#48484A' : '#C7C7CC'} 
+            />
+          </View>
+        </View>
+
+        {log.summary ? (
+          <Text 
+            style={[styles.summaryText, isDark && styles.summaryTextDark]} 
+            numberOfLines={2}
+          >
+            {log.summary}
+          </Text>
+        ) : (
+          <Text 
+            style={[styles.placeholderText, isDark && styles.placeholderTextDark]} 
+            numberOfLines={2}
+          >
+            Daily reflection and mood tracking entry
+          </Text>
+        )}
+
+        <View style={styles.metricsRow}>
+          <View style={styles.metricItem}>
+            <View style={[styles.metricBadge, { backgroundColor: getMoodColor(log.mood_score) }]}>
+              <Ionicons name="happy-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.metricValue}>
+                {log.mood_score ? log.mood_score.toFixed(1) : '—'}
               </Text>
-              <View style={styles.timeIndicator}>
-                <View style={[styles.timeDot, { backgroundColor: getMoodColor(log.mood_score) }]} />
-                <Text style={[styles.timeText, isDark && styles.timeTextDark]}>
-                  {new Date(log.log_date).toLocaleTimeString('en-US', { 
-                    hour: 'numeric', 
-                    minute: '2-digit',
-                    hour12: false 
-                  })}
-                </Text>
-              </View>
             </View>
-            
-            <View style={styles.moodSection}>
-              <View style={[styles.moodBadge, { backgroundColor: getMoodColor(log.mood_score) }]}>
-                <Text style={styles.moodEmoji}>{getMoodEmoji(log.mood_score)}</Text>
-                <Text style={styles.moodScore}>
-                  {log.mood_score != null ? log.mood_score.toFixed(1) : '--'}
-                </Text>
-              </View>
-              {qualityIndicator && (
-                <View style={styles.qualityBadge}>
-                  <Ionicons 
-                    name={qualityIndicator.icon as any} 
-                    size={12} 
-                    color={qualityIndicator.color} 
-                  />
-                </View>
-              )}
-            </View>
+            <Text style={[styles.metricLabel, isDark && styles.metricLabelDark]}>Mood</Text>
           </View>
 
-          {log.summary && (
-            <Text 
-              style={[styles.summaryText, isDark && styles.summaryTextDark]} 
-              numberOfLines={2}
-            >
-              {log.summary}
-            </Text>
-          )}
+          <View style={styles.metricItem}>
+            <View style={[styles.metricBadge, { backgroundColor: '#34C759' }]}>
+              <Ionicons name="flash-outline" size={14} color="#FFFFFF" />
+              <Text style={styles.metricValue}>
+                {log.energy_level ? log.energy_level.toFixed(1) : '—'}
+              </Text>
+            </View>
+            <Text style={[styles.metricLabel, isDark && styles.metricLabelDark]}>Energy</Text>
+          </View>
 
           {log.emotional_tags && (
             <View style={styles.tagsContainer}>
-              {log.emotional_tags.split(',').slice(0, 3).map((tag, i) => (
-                <View key={i} style={[styles.tag, isDark && styles.tagDark]}>
-                  <Text style={[styles.tagText, isDark && styles.tagTextDark]}>
-                    {tag.trim()}
-                  </Text>
-                </View>
-              ))}
-              {log.emotional_tags.split(',').length > 3 && (
+              {log.emotional_tags.split(',').slice(0, 2).map((tag, i) => {
+                const trimmedTag = tag.trim();
+                if (!trimmedTag) return null;
+                return (
+                  <View key={i} style={[styles.tag, isDark && styles.tagDark]}>
+                    <Text style={[styles.tagText, isDark && styles.tagTextDark]}>
+                      {trimmedTag}
+                    </Text>
+                  </View>
+                );
+              }).filter(Boolean)}
+              {log.emotional_tags.split(',').length > 2 && (
                 <Text style={[styles.moreTagsText, isDark && styles.moreTagsTextDark]}>
-                  +{log.emotional_tags.split(',').length - 3} more
+                  +{log.emotional_tags.split(',').length - 2}
                 </Text>
               )}
             </View>
           )}
+        </View>
 
-          {log.energy_level && (
-            <View style={styles.energySection}>
-              <Ionicons name="flash-outline" size={14} color="#FF9500" />
-              <Text style={[styles.energyText, isDark && styles.energyTextDark]}>
-                Energy: {log.energy_level.toFixed(1)}/10
+        {/* Additional insights row */}
+        <View style={styles.insightsRow}>
+          <View style={styles.insightItem}>
+            <Ionicons name="time-outline" size={14} color={isDark ? '#8E8E93' : '#8E8E93'} />
+            <Text style={[styles.insightText, isDark && styles.insightTextDark]}>
+              {new Date(log.log_date).toLocaleTimeString('en-US', { 
+                hour: 'numeric', 
+                minute: '2-digit',
+                hour12: true 
+              })}
+            </Text>
+          </View>
+          
+          <View style={styles.insightItem}>
+            <Ionicons name="trending-up" size={14} color={log.mood_score >= 7 ? '#34C759' : log.mood_score >= 5 ? '#FF9500' : '#FF3B30'} />
+            <Text style={[styles.insightText, isDark && styles.insightTextDark]}>
+              {log.mood_score >= 7 ? 'Good day' : log.mood_score >= 5 ? 'Moderate' : 'Challenging'}
+            </Text>
+          </View>
+
+          {log.reflection_quality && (
+            <View style={styles.insightItem}>
+              <Ionicons name="checkmark-circle" size={14} color="#34C759" />
+              <Text style={[styles.insightText, isDark && styles.insightTextDark]}>
+                Quality: {log.reflection_quality}/10
               </Text>
             </View>
           )}
         </View>
-
-        <View style={styles.cardActions}>
-          <Ionicons 
-            name="chevron-forward" 
-            size={16} 
-            color={isDark ? '#48484A' : '#C7C7CC'} 
-          />
-        </View>
-      </Animated.View>
-    </PanGestureHandler>
+      </TouchableOpacity>
+    </Animated.View>
   );
 };
 
@@ -317,109 +305,124 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   logCard: {
-    flexDirection: 'row',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
     borderWidth: 0.5,
     borderColor: '#E5E5EA',
-    alignItems: 'center',
   },
   logCardDark: {
     backgroundColor: '#1C1C1E',
     borderColor: '#38383A',
-    shadowOpacity: 0.2,
-  },
-  cardContent: {
-    flex: 1,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
+    marginBottom: 12,
   },
-  dateSection: {
+  cardHeaderLeft: {
     flex: 1,
   },
-  dateText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000000',
-    marginBottom: 2,
-    letterSpacing: -0.2,
-  },
-  dateTextDark: {
-    color: '#FFFFFF',
-  },
-  timeIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  timeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  timeText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#8E8E93',
-  },
-  timeTextDark: {
-    color: '#8E8E93',
-  },
-  moodSection: {
+  cardHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  moodBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    gap: 4,
+  dateLabel: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#000000',
+    letterSpacing: -0.2,
   },
-  moodEmoji: {
-    fontSize: 14,
-  },
-  moodScore: {
-    fontSize: 13,
-    fontWeight: '700',
+  dateLabelDark: {
     color: '#FFFFFF',
   },
+  timeText: {
+    fontSize: 15,
+    color: '#8E8E93',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  timeTextDark: {
+    color: '#8E8E93',
+  },
   qualityBadge: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#F2F2F7',
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#FFF8DC',
+    borderRadius: 8,
+    gap: 4,
+  },
+  qualityBadgeDark: {
+    backgroundColor: '#2C2C2E',
+  },
+  qualityText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FF9500',
+  },
+  qualityTextDark: {
+    color: '#FF9500',
   },
   summaryText: {
     fontSize: 15,
     lineHeight: 21,
     color: '#3C3C43',
-    marginBottom: 8,
+    marginBottom: 12,
     fontWeight: '400',
   },
   summaryTextDark: {
     color: '#EBEBF5',
   },
+  placeholderText: {
+    fontSize: 15,
+    lineHeight: 21,
+    color: '#8E8E93',
+    marginBottom: 12,
+    fontWeight: '400',
+    fontStyle: 'italic',
+  },
+  placeholderTextDark: {
+    color: '#8E8E93',
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  metricItem: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  metricBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  metricValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  metricLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#8E8E93',
+  },
+  metricLabelDark: {
+    color: '#8E8E93',
+  },
   tagsContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 6,
-    marginBottom: 8,
-    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'flex-end',
   },
   tag: {
     backgroundColor: '#F2F2F7',
@@ -431,7 +434,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2C2C2E',
   },
   tagText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '500',
     color: '#3C3C43',
   },
@@ -439,7 +442,7 @@ const styles = StyleSheet.create({
     color: '#EBEBF5',
   },
   moreTagsText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '500',
     color: '#8E8E93',
     fontStyle: 'italic',
@@ -447,22 +450,25 @@ const styles = StyleSheet.create({
   moreTagsTextDark: {
     color: '#8E8E93',
   },
-  energySection: {
+  insightsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  insightItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  energyText: {
-    fontSize: 13,
+  insightText: {
+    fontSize: 12,
     fontWeight: '500',
     color: '#8E8E93',
   },
-  energyTextDark: {
+  insightTextDark: {
     color: '#8E8E93',
-  },
-  cardActions: {
-    marginLeft: 12,
-    padding: 4,
   },
   emptyCard: {
     marginHorizontal: 20,

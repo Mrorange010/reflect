@@ -85,12 +85,26 @@ function AppNavigator() {
         setLoading(false);
         return;
       }
-      const { data } = await supabase
-        .from('user_settings')
-        .select('onboarding_complete')
-        .eq('user_id', user.id)
-        .single();
-      setNeedsOnboarding(!data?.onboarding_complete);
+      
+      try {
+        const { data, error } = await supabase
+          .from('user_settings')
+          .select('onboarding_complete')
+          .eq('user_id', user.id)
+          .single();
+        
+        if (error) {
+          console.log('Error checking onboarding:', error);
+          // If no user_settings record exists, assume needs onboarding
+          setNeedsOnboarding(true);
+        } else {
+          setNeedsOnboarding(!data?.onboarding_complete);
+        }
+      } catch (error) {
+        console.log('Exception checking onboarding:', error);
+        setNeedsOnboarding(true);
+      }
+      
       setLoading(false);
     }
   }, []);

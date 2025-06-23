@@ -11,6 +11,7 @@ import {
   StyleSheet,
   useColorScheme,
   StatusBar,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,6 +21,8 @@ import { supabase } from '../utils/supabase';
 import { useFocusEffect } from '@react-navigation/native';
 import { updateUserStreak } from '../utils/streak';
 
+const { width } = Dimensions.get('window');
+
 type Message = {
   id: string;
   text: string;
@@ -28,29 +31,29 @@ type Message = {
   status?: 'sending' | 'sent' | 'delivered' | 'read';
 };
 
-// Apple Health-style gradient background (matching dashboard)
+// Enhanced Apple Health-style gradient background
 const HealthGradientBackground = ({ isDark }: { isDark: boolean }) => {
   return (
     <View style={StyleSheet.absoluteFillObject}>
-      {/* Background color */}
+      {/* Base background */}
       <View style={[StyleSheet.absoluteFillObject, { backgroundColor: isDark ? '#000000' : '#FFFFFF' }]} />
       
-      {/* Top gradient overlay - matching dashboard style */}
+      {/* Sophisticated gradient overlay */}
       <LinearGradient
         colors={isDark 
-          ? ['rgba(0, 122, 255, 0.25)', 'rgba(52, 199, 89, 0.1)', 'transparent'] as const
-          : ['rgba(0, 122, 255, 0.15)', 'rgba(52, 199, 89, 0.08)', 'transparent'] as const
+          ? ['rgba(0, 122, 255, 0.15)', 'rgba(52, 199, 89, 0.08)', 'transparent'] as const
+          : ['rgba(0, 122, 255, 0.08)', 'rgba(52, 199, 89, 0.04)', 'transparent'] as const
         }
         style={{
           position: 'absolute',
           top: 0,
           left: 0,
           right: 0,
-          height: 200, // Smaller than dashboard since we have header
+          height: 250,
         }}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
-        locations={[0, 0.6, 1]}
+        locations={[0, 0.7, 1]}
       />
     </View>
   );
@@ -207,7 +210,14 @@ export default function ChatScreen() {
     >
       {item.sender === 'ai' && (
         <View style={[styles.avatarContainer, isDark && styles.avatarContainerDark]}>
-          <Ionicons name="sparkles" size={16} color="#007AFF" />
+          <LinearGradient
+            colors={['#FF6B4D', '#FF7A59']}
+            style={styles.avatarGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <Text style={styles.avatarText}>A</Text>
+          </LinearGradient>
         </View>
       )}
       
@@ -247,16 +257,23 @@ export default function ChatScreen() {
       />
       
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        {/* Header */}
+        {/* Enhanced Header */}
         <Animated.View 
           style={styles.header}
           entering={FadeInDown.delay(100).duration(600)}
         >
           <View style={styles.headerContent}>
-            <View style={[styles.headerAvatar, isDark && styles.headerAvatarDark]}>
-              <Ionicons name="sparkles" size={24} color="#007AFF" />
+            <View style={[styles.headerAvatarContainer, isDark && styles.headerAvatarContainerDark]}>
+              <LinearGradient
+                colors={['#FF6B4D', '#FF7A59']}
+                style={styles.headerAvatarGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={styles.headerAvatarText}>A</Text>
+              </LinearGradient>
             </View>
-            <View style={styles.headerText}>
+            <View style={styles.headerTextContainer}>
               <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>
                 Ava
               </Text>
@@ -288,36 +305,45 @@ export default function ChatScreen() {
             showsVerticalScrollIndicator={false}
           />
 
-          {/* Typing Indicator */}
+          {/* Enhanced Typing Indicator */}
           {isTyping && (
             <Animated.View 
               style={styles.typingContainer}
               entering={FadeInUp.duration(300)}
             >
               <View style={[styles.avatarContainer, isDark && styles.avatarContainerDark]}>
-                <Ionicons name="sparkles" size={16} color="#007AFF" />
+                <LinearGradient
+                  colors={['#FF6B4D', '#FF7A59']}
+                  style={styles.avatarGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Text style={styles.avatarText}>A</Text>
+                </LinearGradient>
               </View>
               <View style={[styles.typingBubble, isDark && styles.typingBubbleDark]}>
-                <ActivityIndicator size="small" color="#007AFF" />
+                <ActivityIndicator size="small" color="#FF6B4D" />
                 <Text style={[styles.typingText, isDark && styles.typingTextDark]}>
-                  Ava is writing...
+                  Ava is thinking...
                 </Text>
               </View>
             </Animated.View>
           )}
 
-          {/* Input Area */}
+          {/* Enhanced Input Area */}
           <View style={[styles.inputContainer, isDark && styles.inputContainerDark]}>
             <View style={styles.inputRow}>
-              <TextInput
-                style={[styles.textInput, isDark && styles.textInputDark]}
-                placeholder="Share your thoughts..."
-                placeholderTextColor={isDark ? '#8E8E93' : '#9CA3AF'}
-                value={inputText}
-                onChangeText={setInputText}
-                multiline
-                maxLength={1000}
-              />
+              <View style={[styles.textInputContainer, isDark && styles.textInputContainerDark]}>
+                <TextInput
+                  style={[styles.textInput, isDark && styles.textInputDark]}
+                  placeholder="Share your thoughts..."
+                  placeholderTextColor={isDark ? '#8E8E93' : '#9CA3AF'}
+                  value={inputText}
+                  onChangeText={setInputText}
+                  multiline
+                  maxLength={1000}
+                />
+              </View>
               
               <TouchableOpacity
                 style={[
@@ -331,7 +357,7 @@ export default function ChatScreen() {
                 <LinearGradient
                   colors={(!inputText.trim() || isTyping) 
                     ? ['#C7C7CC', '#C7C7CC'] 
-                    : ['#007AFF', '#34C759']
+                    : ['#FF6B4D', '#FF7A59']
                   }
                   style={styles.sendButtonGradient}
                   start={{ x: 0, y: 0 }}
@@ -365,59 +391,82 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 20,
+    paddingTop: 24,
+    paddingBottom: 24,
   },
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  headerAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#F2F2F7',
+  headerAvatarContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginRight: 16,
+    shadowColor: '#FF6B4D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  headerAvatarContainerDark: {
+    shadowColor: '#FF7A59',
+  },
+  headerAvatarGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
   },
-  headerAvatarDark: {
-    backgroundColor: '#1C1C1E',
-    borderColor: '#38383A',
+  headerAvatarText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
-  headerText: {
+  headerTextContainer: {
     flex: 1,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '700',
-    color: '#000000',
-    letterSpacing: -0.3,
+    color: '#1F2937',
+    letterSpacing: -0.5,
+    marginBottom: 2,
   },
   headerTitleDark: {
     color: '#FFFFFF',
   },
+  headerSubtitle: {
+    fontSize: 16,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginBottom: 6,
+    letterSpacing: 0.1,
+  },
+  headerSubtitleDark: {
+    color: '#9CA3AF',
+  },
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
   },
   statusDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#34C759',
+    backgroundColor: '#10B981',
     marginRight: 6,
   },
   statusText: {
-    fontSize: 15,
-    color: '#8E8E93',
-    fontWeight: '500',
+    fontSize: 14,
+    color: '#10B981',
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   statusTextDark: {
-    color: '#8E8E93',
+    color: '#10B981',
   },
   keyboardAvoidingView: {
     flex: 1,
@@ -426,12 +475,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   messagesContainer: {
-    paddingVertical: 8,
-    paddingBottom: 20,
+    paddingVertical: 12,
+    paddingBottom: 24,
   },
   messageContainer: {
     flexDirection: 'row',
-    marginVertical: 3,
+    marginVertical: 4,
     paddingHorizontal: 20,
   },
   userMessageContainer: {
@@ -441,69 +490,91 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   avatarContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F2F2F7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-    marginTop: 2,
-    borderWidth: 1,
-    borderColor: '#E5E5EA',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 12,
+    marginTop: 4,
+    shadowColor: '#FF6B4D',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
   },
   avatarContainerDark: {
-    backgroundColor: '#1C1C1E',
-    borderColor: '#38383A',
+    shadowColor: '#FF7A59',
+  },
+  avatarGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
   messageBubble: {
-    maxWidth: '75%',
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    maxWidth: width * 0.75,
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
   },
   userBubble: {
     backgroundColor: '#007AFF',
-    borderBottomRightRadius: 4,
+    borderBottomRightRadius: 6,
   },
   userBubbleDark: {
     backgroundColor: '#0A84FF',
   },
   aiBubble: {
-    backgroundColor: '#F2F2F7',
-    borderBottomLeftRadius: 4,
+    backgroundColor: '#F8FAFC',
+    borderBottomLeftRadius: 6,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
   aiBubbleDark: {
-    backgroundColor: '#1C1C1E',
+    backgroundColor: '#1F2937',
+    borderColor: '#374151',
   },
   messageText: {
     fontSize: 16,
-    lineHeight: 22,
+    lineHeight: 24,
     fontWeight: '400',
+    letterSpacing: 0.1,
   },
   userMessageText: {
     color: '#FFFFFF',
   },
   aiMessageText: {
-    color: '#000000',
+    color: '#374151',
   },
   aiMessageTextDark: {
-    color: '#FFFFFF',
+    color: '#E5E7EB',
   },
   timestamp: {
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: 11,
+    marginTop: 6,
     alignSelf: 'flex-end',
     fontWeight: '500',
+    letterSpacing: 0.2,
   },
   userTimestamp: {
     color: 'rgba(255, 255, 255, 0.7)',
   },
   aiTimestamp: {
-    color: '#8E8E93',
+    color: '#9CA3AF',
   },
   aiTimestampDark: {
-    color: '#8E8E93',
+    color: '#6B7280',
   },
   typingContainer: {
     flexDirection: 'row',
@@ -511,68 +582,89 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   typingBubble: {
-    backgroundColor: '#F2F2F7',
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 20,
+    borderBottomLeftRadius: 6,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
   typingBubbleDark: {
-    backgroundColor: '#1C1C1E',
+    backgroundColor: '#1F2937',
+    borderColor: '#374151',
   },
   typingText: {
-    color: '#8E8E93',
-    marginLeft: 8,
-    fontSize: 14,
+    color: '#6B7280',
+    marginLeft: 10,
+    fontSize: 15,
     fontWeight: '500',
+    letterSpacing: 0.1,
   },
   typingTextDark: {
-    color: '#8E8E93',
+    color: '#9CA3AF',
   },
   inputContainer: {
     backgroundColor: '#FFFFFF',
-    borderTopWidth: 0.5,
-    borderTopColor: '#E5E5EA',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
   inputContainerDark: {
     backgroundColor: '#000000',
-    borderTopColor: '#38383A',
+    borderTopColor: '#374151',
   },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 12,
   },
-  textInput: {
+  textInputContainer: {
     flex: 1,
-    backgroundColor: '#F2F2F7',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 16,
-    color: '#000000',
-    maxHeight: 100,
-    fontWeight: '400',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  textInputContainerDark: {
+    backgroundColor: '#1F2937',
+    borderColor: '#374151',
+  },
+  textInput: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#374151',
+    maxHeight: 120,
+    fontWeight: '400',
+    letterSpacing: 0.1,
+    lineHeight: 22,
   },
   textInputDark: {
-    backgroundColor: '#1C1C1E',
-    color: '#FFFFFF',
-    borderColor: '#38383A',
+    color: '#E5E7EB',
   },
   sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: 'hidden',
+    shadowColor: '#FF6B4D',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   sendButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.6,
+    shadowOpacity: 0.1,
   },
   sendButtonGradient: {
     width: '100%',

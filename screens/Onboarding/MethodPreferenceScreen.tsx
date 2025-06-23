@@ -25,11 +25,14 @@ export default function MethodPreferenceScreen() {
   const [saving, setSaving] = useState(false);
 
   const handleFinish = async () => {
+    if (!selectedMethod) return;
+    
     setSaving(true);
     try {
       // Save onboarding data to Supabase (assumes user is logged in)
       const user = (await supabase.auth.getUser()).data.user;
       if (!user) throw new Error('No user logged in');
+      
       const { error } = await supabase.from('user_settings').upsert({
         user_id: user.id,
         goals,
@@ -37,8 +40,15 @@ export default function MethodPreferenceScreen() {
         method: selectedMethod,
         onboarding_complete: true,
       });
+      
       if (error) throw error;
+      
+      // Force a navigation reset by refreshing auth state
+      // This will trigger the navigation to re-check onboarding status
+      await supabase.auth.refreshSession();
+      
     } catch (e) {
+      console.error('Error saving onboarding:', e);
       Alert.alert('Error', 'Failed to save onboarding preferences.');
     } finally {
       setSaving(false);

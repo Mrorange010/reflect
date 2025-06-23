@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, StyleSheet, useColorScheme, StatusBar } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import AuthInput from '../components/auth/AuthInput';
 import { supabase } from '../utils/supabase';
 import { NavigationProp } from '../navigation';
@@ -9,6 +11,9 @@ import { AuthError } from '@supabase/supabase-js';
 
 export default function LoginScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -42,7 +47,7 @@ export default function LoginScreen() {
       });
 
       if (error) throw error;
-      navigation.navigate('Home');
+      // Navigation will happen automatically based on onboarding status
     } catch (error) {
       const authError = error as AuthError;
       Alert.alert('Login Failed', authError.message);
@@ -78,177 +83,302 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={{ flex: 1 }} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <LinearGradient
-        colors={['#667eea', '#764ba2']}
-        style={{ flex: 1 }}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
-        <View style={{ flex: 1, paddingHorizontal: 24, justifyContent: 'center' }}>
-          {/* Header */}
-          <View style={{ alignItems: 'center', marginBottom: 48 }}>
-            <View style={{
-              width: 80,
-              height: 80,
-              backgroundColor: 'rgba(255, 255, 255, 0.2)',
-              borderRadius: 40,
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: 24,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.3,
-              shadowRadius: 8,
-              elevation: 8,
-            }}>
-              <Text style={{ fontSize: 32, color: 'white' }}>✨</Text>
+    <View style={[styles.container, isDark && styles.containerDark]}>
+      <StatusBar 
+        barStyle={isDark ? "light-content" : "dark-content"} 
+        backgroundColor="transparent" 
+        translucent 
+      />
+
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView 
+          style={styles.keyboardView} 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.content}>
+            {/* Clean Header */}
+            <View style={styles.header}>
+              <View style={[styles.logoContainer, isDark && styles.logoContainerDark]}>
+                <LinearGradient
+                  colors={['#FF6B4D', '#FF7A59']}
+                  style={styles.logoGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Ionicons name="leaf" size={32} color="#FFFFFF" />
+                </LinearGradient>
+              </View>
+              
+              <Text style={[styles.title, isDark && styles.titleDark]}>
+                Welcome Back
+              </Text>
+              <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>
+                Continue your wellness journey
+              </Text>
             </View>
-            <Text style={{
-              fontSize: 32,
-              fontWeight: 'bold',
-              color: 'white',
-              marginBottom: 8,
-              textAlign: 'center',
-            }}>
-              Welcome Back
-            </Text>
-            <Text style={{
-              fontSize: 16,
-              color: 'rgba(255, 255, 255, 0.8)',
-              textAlign: 'center',
-              lineHeight: 24,
-            }}>
-              Continue your journey of self-discovery
-            </Text>
-          </View>
 
-          {/* Form Card */}
-          <View style={{
-            backgroundColor: 'white',
-            borderRadius: 24,
-            padding: 24,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: 0.15,
-            shadowRadius: 16,
-            elevation: 12,
-            marginBottom: 24,
-          }}>
-            <AuthInput
-              label="Email"
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Enter your email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-              error={errors.email}
-            />
+            {/* Clean Form Card */}
+            <View style={[styles.formCard, isDark && styles.formCardDark]}>
+              <AuthInput
+                label="Email"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Enter your email"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                error={errors.email}
+              />
 
-            <AuthInput
-              label="Password"
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Enter your password"
-              secureTextEntry
-              error={errors.password}
-            />
+              <AuthInput
+                label="Password"
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Enter your password"
+                secureTextEntry
+                error={errors.password}
+              />
 
+              <TouchableOpacity
+                style={[styles.primaryButton, loading && styles.primaryButtonDisabled]}
+                onPress={handleLogin}
+                disabled={loading}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={loading 
+                    ? ['#9CA3AF', '#9CA3AF'] 
+                    : ['#FF6B4D', '#FF7A59']
+                  }
+                  style={styles.primaryButtonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Text style={styles.primaryButtonText}>
+                    {loading ? 'Signing In...' : 'Sign In'}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.forgotButton}
+                onPress={handleForgotPassword}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.forgotButtonText, isDark && styles.forgotButtonTextDark]}>
+                  Forgot Password?
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Clean Divider */}
+            <View style={styles.dividerContainer}>
+              <View style={[styles.dividerLine, isDark && styles.dividerLineDark]} />
+              <Text style={[styles.dividerText, isDark && styles.dividerTextDark]}>
+                or
+              </Text>
+              <View style={[styles.dividerLine, isDark && styles.dividerLineDark]} />
+            </View>
+
+            {/* Secondary Button */}
             <TouchableOpacity
-              style={{
-                backgroundColor: loading ? '#9CA3AF' : '#667eea',
-                paddingVertical: 16,
-                borderRadius: 16,
-                marginTop: 24,
-                shadowColor: loading ? '#9CA3AF' : '#667eea',
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 8,
-                elevation: 6,
-              }}
-              onPress={handleLogin}
-              disabled={loading}
+              style={[styles.secondaryButton, isDark && styles.secondaryButtonDark]}
+              onPress={() => navigation.navigate('SignUp')}
               activeOpacity={0.8}
             >
-              <Text style={{
-                color: 'white',
-                textAlign: 'center',
-                fontSize: 18,
-                fontWeight: '600',
-              }}>
-                {loading ? 'Signing you in...' : 'Continue Your Journey'}
+              <Text style={[styles.secondaryButtonText, isDark && styles.secondaryButtonTextDark]}>
+                Create Account
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={{ marginTop: 16, paddingVertical: 8 }}
-              onPress={handleForgotPassword}
-              activeOpacity={0.7}
-            >
-              <Text style={{
-                color: '#667eea',
-                textAlign: 'center',
-                fontSize: 16,
-                fontWeight: '500',
-              }}>
-                Forgot your password?
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Divider */}
-          <View style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            marginBottom: 24,
-          }}>
-            <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255, 255, 255, 0.3)' }} />
-            <Text style={{
-              marginHorizontal: 16,
-              color: 'rgba(255, 255, 255, 0.8)',
-              fontSize: 16,
-              fontWeight: '500',
-            }}>
-              or
+            <Text style={[styles.helpText, isDark && styles.helpTextDark]}>
+              New to mindful reflection? Start your journey
             </Text>
-            <View style={{ flex: 1, height: 1, backgroundColor: 'rgba(255, 255, 255, 0.3)' }} />
           </View>
-
-          {/* Sign Up Button */}
-          <TouchableOpacity
-            style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.15)',
-              borderWidth: 1,
-              borderColor: 'rgba(255, 255, 255, 0.3)',
-              paddingVertical: 16,
-              borderRadius: 16,
-            }}
-            onPress={() => navigation.navigate('SignUp')}
-            activeOpacity={0.8}
-          >
-            <Text style={{
-              color: 'white',
-              textAlign: 'center',
-              fontSize: 18,
-              fontWeight: '600',
-            }}>
-              Start Your Reflection Journey
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={{
-            color: 'rgba(255, 255, 255, 0.7)',
-            textAlign: 'center',
-            marginTop: 12,
-            fontSize: 14,
-          }}>
-            New to mindful reflection? Create your account
-          </Text>
-        </View>
-      </LinearGradient>
-    </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  containerDark: {
+    backgroundColor: '#000000',
+  },
+  safeArea: {
+    flex: 1,
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 24,
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 48,
+  },
+  logoContainer: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    marginBottom: 32,
+    shadowColor: '#FF6B4D',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  logoContainerDark: {
+    shadowColor: '#FF7A59',
+  },
+  logoGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  titleDark: {
+    color: '#FFFFFF',
+  },
+  subtitle: {
+    fontSize: 17,
+    color: '#6B7280',
+    textAlign: 'center',
+    fontWeight: '500',
+    letterSpacing: 0.1,
+  },
+  subtitleDark: {
+    color: '#9CA3AF',
+  },
+  formCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 28,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 12,
+    marginBottom: 32,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  formCardDark: {
+    backgroundColor: '#1F2937',
+    borderColor: '#374151',
+    shadowColor: '#000',
+  },
+  primaryButton: {
+    borderRadius: 16,
+    marginTop: 28,
+    shadowColor: '#FF6B4D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  primaryButtonDisabled: {
+    shadowOpacity: 0.1,
+  },
+  primaryButtonGradient: {
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  forgotButton: {
+    marginTop: 20,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  forgotButtonText: {
+    color: '#FF6B4D',
+    fontSize: 16,
+    fontWeight: '500',
+    letterSpacing: 0.1,
+  },
+  forgotButtonTextDark: {
+    color: '#FF7A59',
+  },
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E5E7EB',
+  },
+  dividerLineDark: {
+    backgroundColor: '#374151',
+  },
+  dividerText: {
+    marginHorizontal: 20,
+    color: '#9CA3AF',
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+  },
+  dividerTextDark: {
+    color: '#6B7280',
+  },
+  secondaryButton: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  secondaryButtonDark: {
+    backgroundColor: '#374151',
+    borderColor: '#4B5563',
+  },
+  secondaryButtonText: {
+    color: '#374151',
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  secondaryButtonTextDark: {
+    color: '#E5E7EB',
+  },
+  helpText: {
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginTop: 16,
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: 0.1,
+  },
+  helpTextDark: {
+    color: '#6B7280',
+  },
+});
